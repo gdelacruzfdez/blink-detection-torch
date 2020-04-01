@@ -18,6 +18,8 @@ from network import EmbeddingNet, SiameseNet
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform
 
+DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize'
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset_dirs', type=str)
@@ -116,6 +118,7 @@ def main():
     ])
 
     dataset_dirs = args.dataset_dirs.split(',')
+    dataset_dirs = map(lambda x: DATA_BASE_PATH + x, dataset_dirs)
 
     train_set = SiameseDataset(dataset_dirs, train_transform)    
     train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=2, n_samples=30)
@@ -127,6 +130,7 @@ def main():
 
     if args.test_dataset_dirs != None:
         test_dataset_dirs = args.test_dataset_dirs.split(',')
+        test_dataset_dirs = map(lambda x: DATA_BASE_PATH + x, test_dataset_dirs)
         test_set = SiameseDataset(test_dataset_dirs, test_transform)
         test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=0)
         print(test_set)
