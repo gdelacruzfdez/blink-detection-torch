@@ -11,7 +11,7 @@ import torch
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
-from torch.option.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR
 
 from dataloader import SiameseDataset, BalancedBatchSampler
 from network import EmbeddingNet, SiameseNet
@@ -67,7 +67,7 @@ def train_epoch(train_loader, model, criterion, optimizer, cuda):
 def test_epoch( test_loader, model, criterion, cuda):
     test_embeddings, test_targets = extract_embeddings(test_loader, model, cuda)
 
-    loss = criterion(outputs, targets)
+    loss = criterion(test_embeddings, test_targets)
 
     return loss.item()
 
@@ -118,7 +118,7 @@ def main():
     ])
 
     dataset_dirs = args.dataset_dirs.split(',')
-    dataset_dirs = map(lambda x: DATA_BASE_PATH + x, dataset_dirs)
+    dataset_dirs = map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs)
 
     train_set = SiameseDataset(dataset_dirs, train_transform)    
     train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=2, n_samples=30)
@@ -130,7 +130,7 @@ def main():
 
     if args.test_dataset_dirs != None:
         test_dataset_dirs = args.test_dataset_dirs.split(',')
-        test_dataset_dirs = map(lambda x: DATA_BASE_PATH + x, test_dataset_dirs)
+        test_dataset_dirs = map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs)
         test_set = SiameseDataset(test_dataset_dirs, test_transform)
         test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=0)
         print(test_set)
@@ -140,7 +140,7 @@ def main():
         model = model.cuda()
 
     criterion = ContrastiveLoss(margin=1)
-    optimizer = Adam(model.parameters, lr=1e-4)
+    optimizer = Adam(model.parameters(), lr=1e-4)
     scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
 
     fit(train_loader, test_loader, model, criterion, optimizer, scheduler, args.epochs, cuda)

@@ -19,7 +19,7 @@ class SiameseDataset(Dataset):
         dataframes = []
         for root in paths:
             csvFilePath = root + '.csv'
-            dataframe = pd.read_csv(self.csvFilePath)
+            dataframe = pd.read_csv(csvFilePath)
             dataframe['base_path'] = root
 
             completePaths = []
@@ -29,7 +29,7 @@ class SiameseDataset(Dataset):
             dataframes.append(dataframe)
         
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
-        self.targets = self.dataframe[y_col]
+        self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
 
     def __len__(self):
@@ -41,7 +41,7 @@ class SiameseDataset(Dataset):
     def __getitem__(self, idx):
         target = int(rand.random_sample() > POSITIVE_NEGATIVE_RATIO)
 
-        y = self.dataframe[y_col].to_numpy().astype(int)
+        y = self.dataframe[self.y_col].to_numpy().astype(int)
 
         class1 = rand.choice(self.classes)
         if target == SAME_CLASS:
@@ -85,7 +85,7 @@ class BalancedBatchSampler(BatchSampler):
         count = 0
         while count + self.batch_size < self.n_dataset:
             indices = []
-            for target in np.random.choice(self.target_to_idxs[target], self.n_classes, replace = False):
+            for target in np.random.choice(self.classes, self.n_classes, replace = False):
                 indices.extend(np.random.choice(self.target_to_idxs[target], self.n_samples, replace=False))
             yield indices
             count += self.batch_size
