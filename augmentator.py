@@ -1,10 +1,10 @@
-import imgaug as ia
 from imgaug import augmenters as iaa
-
-def augmentor(images):
-		'Apply data augmentation'
-		sometimes = lambda aug: iaa.Sometimes(0.5, aug)
-		seq = iaa.Sequential(
+import imgaug as ia
+		
+class ImgAugTransform:
+  def __init__(self):
+    sometimes = lambda aug: iaa.Sometimes(0.5, aug)
+    self.aug = iaa.Sequential(
 				[
 				# apply the following augmenters to most images
 				#iaa.Fliplr(0.5),  # horizontally flip 50% of all images
@@ -87,5 +87,8 @@ def augmentor(images):
 				           )
 				],
 				random_order=True
-		)
-		return seq.augment_images(images)
+    )
+      
+  def __call__(self, img):
+    img = np.array(img)
+    return self.aug.augment_image(img)
