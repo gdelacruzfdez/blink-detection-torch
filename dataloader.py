@@ -6,16 +6,17 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import BatchSampler
 import pandas as pd
 from PIL import Image
+from network import SiameseNet
 
 POSITIVE_NEGATIVE_RATIO = 0.5
 SAME_CLASS = 1
 
 
-class SingleImageDataset(Dataset):
+class LSTMDataset(Dataset):
 
-    def __init__(self, paths, transform):
+    def __init__(self, paths, transform, cnn_model, cuda):
         self.x_col = 'complete_path'
-        self.y_col = 'blink'
+        self.y_col = 'blink_id'
         self.transform = transform
         dataframes = []
         for root in paths:
@@ -29,6 +30,8 @@ class SingleImageDataset(Dataset):
             dataframe['complete_path'] = completePaths
             dataframes.append(dataframe)
         
+        self.cnn_model = cnn_model
+        self.cuda = cuda
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
@@ -41,13 +44,20 @@ class SingleImageDataset(Dataset):
     
     def __getitem__(self, idx):
         selectedRow = self.dataframe.iloc[idx]
-        sample = Image.open(selectedRow['complete_path'])
-        target = selectedRow[self.y_col].astype(int)
+        image = Image.open(selectedRow['complete_path'])
+        target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
 
         if self.transform is not None:
-            sample = self.transform(sample)
+            image = self.transform(image)
+        
+        if self.cuda:
+            image = image.cuda()
+        
+        sample = self.cnn_model.get_embedding(image)
 
         return sample, target
+
+
 class SiameseDataset(Dataset):
 
     def __init__(self, paths, transform):

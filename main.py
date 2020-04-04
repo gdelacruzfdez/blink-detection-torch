@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 
-from dataloader import SiameseDataset, SingleImageDataset, BalancedBatchSampler
+from dataloader import SiameseDataset, BalancedBatchSampler
 from network import EmbeddingNet, SiameseNet
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform
@@ -25,8 +25,8 @@ def parse_args():
     parser.add_argument('dataset_dirs', type=str)
     parser.add_argument('--test_dataset_dirs', type=str)
     parser.add_argument('--epochs', type=int, default = 20)
-    parser.add_argument('--input-size', type=int, default=100)
-    parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--input_size', type=int, default=100)
+    parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--dims', type=int, default=256)
     return parser.parse_args()
 
@@ -148,7 +148,7 @@ def main():
         test_dataset_dirs = map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs)
         test_set = SiameseDataset(test_dataset_dirs, test_transform)
         test_batch_sampler = BalancedBatchSampler(test_set.targets, n_classes=2, n_samples=args.batch_size)
-        test_loader = DataLoader(test_set, batch_sampler=train_batch_sampler, num_workers=8)
+        test_loader = DataLoader(test_set, batch_sampler=test_batch_sampler, num_workers=8)
         print(test_set)
 
     model = SiameseNet(args.dims)
