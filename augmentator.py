@@ -1,5 +1,6 @@
 from imgaug import augmenters as iaa
 import imgaug as ia
+import numpy as np
 		
 class ImgAugTransform:
   def __init__(self):
@@ -7,7 +8,7 @@ class ImgAugTransform:
     self.aug = iaa.Sequential(
 				[
 				# apply the following augmenters to most images
-				#iaa.Fliplr(0.5),  # horizontally flip 50% of all images
+				iaa.Fliplr(0.5),  # horizontally flip 50% of all images
 				#iaa.Flipud(0.2),  # vertically flip 20% of all images
 				sometimes(iaa.Affine(
 					scale={"x": (0.9, 1.1), "y": (0.9, 1.1)},

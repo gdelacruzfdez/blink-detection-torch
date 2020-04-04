@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 
-from dataloader import SiameseDataset, BalancedBatchSampler
+from dataloader import SiameseDataset, SingleImageDataset, BalancedBatchSampler
 from network import EmbeddingNet, SiameseNet
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform
@@ -38,38 +38,53 @@ def fit(train_loader, test_loader, model, criterion, optimizer, scheduler, n_epo
         print('Epoch: {}/{}, Average train loss: {:.4f}'.format(epoch, n_epochs, train_loss))
 
         if test_loader is not None:
-            test_loss = test_epoch(train_loader, test_loader, model, cuda)
-            print('Epoch: {}/{}, Test Loss: {:.4f}'.format(epoch, n_epochs, accuracy))
+            test_loss = test_epoch(test_loader, model, criterion, cuda)
+            print('Epoch: {}/{}, Test Loss: {:.4f}'.format(epoch, n_epochs, test_loss))
 
 
 def train_epoch(train_loader, model, criterion, optimizer, cuda):
     model.train()
 
     losses = []
-    for batch_idx, data in tqdm(enumerate(train_loader), total=len(train_loader), desc='Training', file=sys.stdout):
-        samples, targets = data
+    progress = tqdm(enumerate(train_loader), total=len(train_loader), desc='Training', file=sys.stdout)
+    for batch_idx, data in progress:
+        samples1, samples2, targets = data
         if cuda:
-            samples = samples.cuda()
+            samples1 = samples1.cuda()
+            samples2 = samples2.cuda()
             targets = targets.cuda()
         
         optimizer.zero_grad()
-        outputs = model(samples)
+        outputs1, outputs2 = model(samples1, samples2)
 
-        loss = criterion(outputs, targets)
+        loss = criterion(outputs1, outputs2, targets)
         loss.backward()
         optimizer.step()
 
         losses.append(loss.item())
+        progress.set_description('Training Loss: ' + str(loss.item()))
     
     return np.mean(losses)
 
 
-def test_epoch( test_loader, model, criterion, cuda):
-    test_embeddings, test_targets = extract_embeddings(test_loader, model, cuda)
-
-    loss = criterion(test_embeddings, test_targets)
-
-    return loss.item()
+def test_epoch(test_loader, model, criterion, cuda):
+    
+    losses = []
+    progress = tqdm(enumerate(test_loader), total=len(test_loader), desc='Testing', file=sys.stdout)
+    for batch_idx, data in progress:
+        samples1, samples2, targets = data
+        if cuda:
+            samples1 = samples1.cuda()
+            samples2 = samples2.cuda()
+            targets = targets.cuda()
+        
+        with torch.no_grad():
+            outputs1 = model.get_embedding(samples1)
+            outputs2 = model.get_embedding(samples2)
+            loss = criterion(outputs1, outputs2, targets)
+            losses.append(loss.item())
+            progress.set_description('Test Loss: ' + str(loss.item()))
+    return np.mean(losses)
 
 def extract_embeddings(loader, model, cuda):
     model.eval()
@@ -121,8 +136,8 @@ def main():
     dataset_dirs = map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs)
 
     train_set = SiameseDataset(dataset_dirs, train_transform)    
-    train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=2, n_samples=30)
-    train_loader = DataLoader(train_set, batch_sampler=train_batch_sampler, num_workers=0)
+    train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=2, n_samples=args.batch_size)
+    train_loader = DataLoader(train_set, batch_sampler=train_batch_sampler, num_workers=8)
 
     print(train_set)
 
@@ -132,7 +147,8 @@ def main():
         test_dataset_dirs = args.test_dataset_dirs.split(',')
         test_dataset_dirs = map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs)
         test_set = SiameseDataset(test_dataset_dirs, test_transform)
-        test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=0)
+        test_batch_sampler = BalancedBatchSampler(test_set.targets, n_classes=2, n_samples=args.batch_size)
+        test_loader = DataLoader(test_set, batch_sampler=train_batch_sampler, num_workers=8)
         print(test_set)
 
     model = SiameseNet(args.dims)
@@ -144,6 +160,8 @@ def main():
     scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
 
     fit(train_loader, test_loader, model, criterion, optimizer, scheduler, args.epochs, cuda)
+    
+    torch.save(model.state_dict(),'siamese_model_resnet50_50ep.pt')
 
 
 

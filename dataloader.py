@@ -10,10 +10,48 @@ from PIL import Image
 POSITIVE_NEGATIVE_RATIO = 0.5
 SAME_CLASS = 1
 
+
+class SingleImageDataset(Dataset):
+
+    def __init__(self, paths, transform):
+        self.x_col = 'complete_path'
+        self.y_col = 'blink'
+        self.transform = transform
+        dataframes = []
+        for root in paths:
+            csvFilePath = root + '.csv'
+            dataframe = pd.read_csv(csvFilePath)
+            dataframe['base_path'] = root
+
+            completePaths = []
+            for idx, row in dataframe.iterrows():
+                completePaths.append(os.path.join(row['base_path'], row['frame']))
+            dataframe['complete_path'] = completePaths
+            dataframes.append(dataframe)
+        
+        self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
+        self.targets = self.dataframe[self.y_col]
+        self.classes = np.unique(self.dataframe[self.y_col])
+
+    def __len__(self):
+        return len(self.dataframe)
+
+    def getDataframeRow(self, idx):
+        return self.dataframe.iloc[idx]
+    
+    def __getitem__(self, idx):
+        selectedRow = self.dataframe.iloc[idx]
+        sample = Image.open(selectedRow['complete_path'])
+        target = selectedRow[self.y_col].astype(int)
+
+        if self.transform is not None:
+            sample = self.transform(sample)
+
+        return sample, target
 class SiameseDataset(Dataset):
 
     def __init__(self, paths, transform):
-        self.x_col = 'frame'
+        self.x_col = 'complete_path'
         self.y_col = 'blink'
         self.transform = transform
         dataframes = []
@@ -49,23 +87,21 @@ class SiameseDataset(Dataset):
         else:
             class2 = rand.choice(list((set(self.classes) - {class1})))
 
-        idx1 = rand.choice(np.where(y == class1))
-        selectedRow1 = x.iloc[idx1]
+        idx1 = rand.choice(np.argwhere(y == class1).flatten())
+        selectedRow1 = self.dataframe.iloc[idx1]
 
-        idx2 = rand.choice(np.where(y == class2))
-        selectedRow2 = x.iloc[idx2]
+        idx2 = rand.choice(np.argwhere(y == class2).flatten())
+        selectedRow2 = self.dataframe.iloc[idx2]
 
         sample1 = Image.open(selectedRow1['complete_path'])
         sample2 = Image.open(selectedRow2['complete_path'])
 
-        sample1 = np.array(sample1)
-        sample2 = np.array(sample2)
 
         if self.transform is not None:
             sample1 = self.transform(sample1)
             sample2 = self.transform(sample2)
-        
-        return (sample1, sample2), target
+
+        return sample1, sample2, target
 
 
 class BalancedBatchSampler(BatchSampler):
@@ -75,7 +111,7 @@ class BalancedBatchSampler(BatchSampler):
         self.classes = list(set(self.targets))
         self.n_classes = n_classes
         self.n_samples = n_samples
-        self.n_dataset = len(self.targets)
+        self.n_dataset = len(self.targets) // 2
         self.batch_size = self.n_classes * self.n_samples
 
         self.target_to_idxs = {target: np.where(np.array(self.targets) == target)[0] for target in self.classes}
