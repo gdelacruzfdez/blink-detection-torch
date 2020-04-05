@@ -14,12 +14,14 @@ SAME_CLASS = 1
 
 class LSTMDataset(Dataset):
 
-    def __init__(self, paths, transform, cnn_model, cuda):
+    def __init__(self, paths, transform):
         self.x_col = 'complete_path'
         self.y_col = 'blink_id'
         self.transform = transform
         dataframes = []
+        print(paths)
         for root in paths:
+            print(root)
             csvFilePath = root + '.csv'
             dataframe = pd.read_csv(csvFilePath)
             dataframe['base_path'] = root
@@ -30,8 +32,6 @@ class LSTMDataset(Dataset):
             dataframe['complete_path'] = completePaths
             dataframes.append(dataframe)
         
-        self.cnn_model = cnn_model
-        self.cuda = cuda
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
@@ -44,16 +44,10 @@ class LSTMDataset(Dataset):
     
     def __getitem__(self, idx):
         selectedRow = self.dataframe.iloc[idx]
-        image = Image.open(selectedRow['complete_path'])
+        sample = Image.open(selectedRow['complete_path'])
         target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
-
         if self.transform is not None:
-            image = self.transform(image)
-        
-        if self.cuda:
-            image = image.cuda()
-        
-        sample = self.cnn_model.get_embedding(image)
+            sample = self.transform(sample)
 
         return sample, target
 
@@ -121,7 +115,7 @@ class BalancedBatchSampler(BatchSampler):
         self.classes = list(set(self.targets))
         self.n_classes = n_classes
         self.n_samples = n_samples
-        self.n_dataset = len(self.targets) // 2
+        self.n_dataset = len(self.targets)
         self.batch_size = self.n_classes * self.n_samples
 
         self.target_to_idxs = {target: np.where(np.array(self.targets) == target)[0] for target in self.classes}

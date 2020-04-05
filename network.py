@@ -1,6 +1,7 @@
 from torch import nn
 from torchvision import models
 import multiprocessing.dummy as mp
+import torch
 
 
 class EmbeddingNet(nn.Module):
@@ -56,17 +57,39 @@ class BiRNN(nn.Module):
         super(BiRNN, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.num_classes = num_classes
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=True)
         self.fc = nn.Linear(hidden_size*2, num_classes)  # 2 for bidirection
-    
+
     def forward(self, x):
         # Set initial states
-        h0 = torch.zeros(self.num_layers*2, x.size(0), self.hidden_size).to(device) # 2 for bidirection 
-        c0 = torch.zeros(self.num_layers*2, x.size(0), self.hidden_size).to(device)
+        h0 = torch.zeros(self.num_layers*2, x.size(0), self.hidden_size).cuda() # 2 for bidirection 
+        c0 = torch.zeros(self.num_layers*2, x.size(0), self.hidden_size).cuda()
         
         # Forward propagate LSTM
         out, _ = self.lstm(x, (h0, c0))  # out: tensor of shape (batch_size, seq_length, hidden_size*2)
         
         # Decode the hidden state of the last time step
-        out = self.fc(out[:, -1, :])
-        return out
+        out = self.fc(out)
+
+        out = out.reshape(-1, self.num_classes)
+        predictions =  nn.functional.softmax(out)
+        return predictions
+
+
+class LSTM(nn.Module):
+    def __init__(self, input_size, hidden_layer_size, num_layers, output_size):
+        super().__init__()
+        self.hidden_layer_size = hidden_layer_size
+
+        self.lstm = nn.LSTM(input_size, hidden_layer_size)
+
+        self.linear = nn.Linear(hidden_layer_size, output_size)
+
+        self.hidden_cell = (torch.zeros(1,1,self.hidden_layer_size).cuda(),
+                            torch.zeros(1,1,self.hidden_layer_size).cuda())
+
+    def forward(self, input_seq):
+        lstm_out, self.hidden_cell = self.lstm(input_seq.view(len(input_seq) ,1, -1), self.hidden_cell)
+        predictions = nn.functional.softmax(self.linear(lstm_out.view(len(input_seq), -1)))
+        return predictions
