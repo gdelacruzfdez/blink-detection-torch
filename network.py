@@ -35,6 +35,25 @@ class SiameseNet(nn.Module):
     def get_embedding(self, x):
         return self.embedding_net(x)
 
+class SiameseNetV2(nn.Module):
+
+    def __init__(self, num_dims: int = 256):
+        super().__init__()
+
+        self.embedding_net = EmbeddingNet(num_dims)
+        self.pool = mp.Pool(processes = 2)
+        self.fc = nn.Linear(num_dims, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x1, x2):
+        output1, output2 = self.pool.map(self.get_embedding, [x1, x2])
+        l1_distance = torch.abs(output1 - output2)
+        out = self.fc(l1_distance)
+        y_prob = self.sigmoid(out)
+        return y_prob
+
+    def get_embedding(self, x):
+        return self.embedding_net(x)
 
 class TripletNet(nn.Module):
 

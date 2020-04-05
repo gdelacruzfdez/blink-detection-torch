@@ -13,9 +13,10 @@ from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
+from torch.nn import CrossEntropyLoss, BCELoss  
 
 from dataloader import SiameseDataset, BalancedBatchSampler, LSTMDataset
-from network import EmbeddingNet, SiameseNet
+from network import EmbeddingNet, SiameseNet, SiameseNetV2
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform
 
@@ -57,9 +58,9 @@ def train_epoch(train_loader, model, criterion, optimizer, cuda):
             targets = targets.cuda()
         
         optimizer.zero_grad()
-        outputs1, outputs2 = model(samples1, samples2)
-
-        loss = criterion(outputs1, outputs2, targets)
+        outputs = model(samples1, samples2)
+        outputs = outputs.squeeze(1)
+        loss = criterion(outputs, targets.float())
         loss.backward()
         optimizer.step()
 
@@ -151,11 +152,12 @@ def main():
         eval_test_loader = DataLoader(eval_test_set, batch_size=args.batch_size, shuffle=False)
         print(test_set)
 
-    model = SiameseNet(args.dims)
+    model = SiameseNetV2(args.dims)
     if cuda:
         model = model.cuda()
 
-    criterion = ContrastiveLoss(margin=1)
+    #criterion = ContrastiveLoss(margin=1)
+    criterion = BCELoss()
     optimizer = Adam(model.parameters(), lr=1e-4)
     scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
 

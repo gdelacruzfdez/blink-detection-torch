@@ -13,7 +13,7 @@ from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
-from torch.nn import CrossEntropyLoss
+from torch.nn import BCELoss
 
 from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler
 from network import EmbeddingNet, SiameseNet, BiRNN, LSTM
