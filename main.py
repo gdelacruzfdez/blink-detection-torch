@@ -59,7 +59,9 @@ def train_epoch(train_loader, model, criterion, optimizer, cuda):
         
         optimizer.zero_grad()
         outputs = model(samples1, samples2)
+        #outputs1, outputs2 = model(samples1, samples2)
         outputs = outputs.squeeze(1)
+        #loss = criterion(outputs1, outputs2, targets)
         loss = criterion(outputs, targets.float())
         loss.backward()
         optimizer.step()
@@ -152,18 +154,19 @@ def main():
         eval_test_loader = DataLoader(eval_test_set, batch_size=args.batch_size, shuffle=False)
         print(test_set)
 
+#    model = SiameseNet(args.dims)
     model = SiameseNetV2(args.dims)
     if cuda:
         model = model.cuda()
 
-    #criterion = ContrastiveLoss(margin=1)
+#    criterion = ContrastiveLoss(margin=0)
     criterion = BCELoss()
-    optimizer = Adam(model.parameters(), lr=1e-4)
+    optimizer = Adam(model.parameters(), lr=1e-4, weight_decay=1e-3)
     scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
 
     fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, args.epochs, cuda)
     
-    torch.save(model.state_dict(),'siamese_model_resnet50_10ep.pt')
+    torch.save(model.state_dict(),'siamese_model_resnet50_20ep.pt')
 
 
 

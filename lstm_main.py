@@ -13,10 +13,10 @@ from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
-from torch.nn import BCELoss
+from torch.nn import BCELoss, CrossEntropyLoss
 
 from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler
-from network import EmbeddingNet, SiameseNet, BiRNN, LSTM
+from network import EmbeddingNet, SiameseNet, SiameseNetV2, BiRNN, LSTM
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform
 
@@ -106,9 +106,12 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
         FP += perf[1] 
 
         acc = (TP + TN) / (FP + FN + TP + TN)
+        precision = TP / (TP + FP) if TP + FP > 0 else 0
+        recall = TP / (TP + FN) if TP + FN > 0 else 0
+        f1 = 2 * ( precision * recall ) / ( precision + recall ) if precision + recall > 0 else 0
         accuracies.append(acc)
         #progress.set_description('Training Loss: {} | Accuracy: {} | F1: {}'.format(loss.item(), accuracy, f1))
-        progress.set_description('Training Loss: {} | Accuracy: {} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc, TP, TN, FP, FN))
+        progress.set_description('Training Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
 
     return np.mean(losses), np.mean(accuracies)
 
@@ -149,7 +152,10 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
 
             acc = (TP + TN) / (FP + FN + TP + TN)
             accuracies.append(acc)
-            progress.set_description('Test Loss: {} | Accuracy: {} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc, TP, TN, FP, FN))
+            precision = TP / (TP + FP) if TP + FP > 0 else 0
+            recall = TP / (TP + FN) if TP + FN > 0 else 0
+            f1 = 2 * ( precision * recall ) / ( precision + recall ) if precision + recall > 0 else 0
+            progress.set_description('Training Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
             #progress.set_description('Test: {} | Accuracy: {} | F1: {}'.format(loss.item(), accuracy, f1))
     return np.mean(losses), np.mean(accuracies)
 
@@ -160,7 +166,7 @@ def main():
     if cuda:
         print('Device: {}'.format(torch.cuda.get_device_name(0)))
 
-    cnn_model = SiameseNet(args.dims)
+    cnn_model = SiameseNetV2(args.dims)
     cnn_model.load_state_dict(torch.load(args.cnn_model))
     cnn_model.eval()
     lstm_model = BiRNN(args.dims, args.lstm_hidden_units, args.lstm_layers,2)
@@ -197,6 +203,7 @@ def main():
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False)
 
     criterion = CrossEntropyLoss()
+
     optimizer = Adam(lstm_model.parameters(), lr=1e-4)
     scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
 
