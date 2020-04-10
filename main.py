@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('--test_dataset_dirs', type=str)
     parser.add_argument('--epochs', type=int, default = 10)
     parser.add_argument('--input_size', type=int, default=100)
-    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--dims', type=int, default=256)
     return parser.parse_args()
 
@@ -41,7 +41,7 @@ def fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, cr
 
         if test_loader is not None:
             classification_report = test_epoch(eval_train_loader, eval_test_loader, model, criterion, cuda)
-            print('Epoch: {}/{}'.format(epoch, n_epochs))
+            print('Test Epoch: {}/{}'.format(epoch, n_epochs))
             print(classification_report)
 
 
@@ -67,7 +67,7 @@ def train_epoch(train_loader, model, criterion, optimizer, cuda):
         optimizer.step()
 
         losses.append(loss.item())
-        progress.set_description('Training Loss: ' + str(loss.item()))
+        progress.set_description('Mean Training Loss: {:.4f}'.format(np.mean(losses)))
     
     return np.mean(losses)
 
@@ -166,7 +166,7 @@ def main():
 
     fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, args.epochs, cuda)
     
-    torch.save(model.state_dict(),'siamese_model_resnet50_20ep.pt')
+    torch.save(model.state_dict(),"siamese_model_resnet18_{}ep.pt".format(args.epochs))
 
 
 

@@ -18,7 +18,8 @@ from torch.nn import BCELoss, CrossEntropyLoss
 from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler
 from network import EmbeddingNet, SiameseNet, SiameseNetV2, BiRNN, LSTM
 from loss import OnlineTripletLoss, ContrastiveLoss
-from augmentator import ImgAugTransform
+from augmentator import ImgAugTransform, LSTMImgAugTransform
+from evaluation import evaluate
 
 DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize'
 
@@ -28,12 +29,12 @@ def parse_args():
     parser.add_argument('--test_dataset_dirs', type=str)
     parser.add_argument('--epochs', type=int, default = 20)
     parser.add_argument('--input_size', type=int, default=100)
-    parser.add_argument('--batch_size', type=int, default=150)
+    parser.add_argument('--batch_size', type=int, default=500)
     parser.add_argument('--dims', type=int, default=256)
     parser.add_argument('--lstm_layers', type=int, default=2)
     parser.add_argument('--lstm_hidden_units', type=int, default=512)
     parser.add_argument('--cnn_model', type=str)
-    parser.add_argument('--sequence_len', type=int, default=30)
+    parser.add_argument('--sequence_len', type=int, default=100)
     return parser.parse_args()
 
 def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, scheduler, n_epochs, cuda, args):
@@ -44,8 +45,8 @@ def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, sched
         print('Epoch: {}/{}, Average train loss: {:.4f}, Average train accuracy: {:.4f}'.format(epoch, n_epochs, train_loss, train_accuracy))
 
         if test_loader is not None:
-            test_loss, test_accuracy= test_epoch(test_loader, model, cnn_model, criterion, cuda, args)
-            print('Epoch: {}/{}, Average test loss: {:.4f}, Average test accuracy: {:.4f}'.format(epoch, n_epochs, test_loss, test_accuracy))
+            f1, precision, recall, fp, fn, tp= test_epoch(test_loader, model, cnn_model, criterion, cuda, args)
+            print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(epoch, n_epochs, f1, precision, recall, tp, fp, fn))
 
 def perf_measure(y_actual, y_hat):
     TP = 0
@@ -74,6 +75,7 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
     FN = 0
     TP = 0
     FP = 0
+    previousFeatures = [np.zeros(())]
     progress = tqdm(enumerate(train_loader), total=len(train_loader), desc='Training', file=sys.stdout)
     for batch_idx, data in progress:
         samples, targets = data
@@ -124,6 +126,8 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
     TP = 0
     FP = 0
     progress = tqdm(enumerate(test_loader), total=len(test_loader), desc='Testing', file=sys.stdout)
+    predictions = np.array([])
+
     for batch_idx, data in progress:
         samples, targets = data
         if cuda:
@@ -143,6 +147,8 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
             targets = targets.data.cpu()
             _, predicted = torch.max(outputs.data, 1)
             predicted = predicted.data.cpu()
+            predictions = np.concatenate((predictions, predicted))
+
             perf = perf_measure(targets, predicted)
 
             TN += perf[2]
@@ -155,9 +161,12 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
             precision = TP / (TP + FP) if TP + FP > 0 else 0
             recall = TP / (TP + FN) if TP + FN > 0 else 0
             f1 = 2 * ( precision * recall ) / ( precision + recall ) if precision + recall > 0 else 0
-            progress.set_description('Training Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
+            progress.set_description('Test Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
             #progress.set_description('Test: {} | Accuracy: {} | F1: {}'.format(loss.item(), accuracy, f1))
-    return np.mean(losses), np.mean(accuracies)
+    dataframe = test_loader.dataset.getDataframe().copy()
+    dataframe = dataframe[:len(predictions)]
+    dataframe['blink_id_pred'] = predictions
+    return evaluate(dataframe)
 
 
 def main():
@@ -177,7 +186,7 @@ def main():
 
     train_transform = transforms.Compose([
         transforms.Resize((100,100), interpolation=Image.BICUBIC),
-    #    ImgAugTransform(),
+        #LSTMImgAugTransform(),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
@@ -194,13 +203,13 @@ def main():
     dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs))
 
     train_set = LSTMDataset(dataset_dirs, train_transform)    
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False)
-
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
+    print('DATASET LENGTH', len(train_loader.dataset.getDataframe()))
 
     test_dataset_dirs = args.test_dataset_dirs.split(',')
     test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
     test_set = LSTMDataset(test_dataset_dirs, test_transform)    
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
     criterion = CrossEntropyLoss()
 

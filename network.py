@@ -2,6 +2,8 @@ from torch import nn
 from torchvision import models
 import multiprocessing.dummy as mp
 import torch
+from pytorchcv.model_provider import get_model as ptcv_get_model
+from torch.autograd import Variable
 
 
 class EmbeddingNet(nn.Module):
@@ -19,13 +21,41 @@ class EmbeddingNet(nn.Module):
     def get_embedding(self, x):
         return self.forward(x)
 
+class EmbeddingNetV2(nn.Module):
+
+    def __init__(self, num_dims):
+        super().__init__()
+
+        self.model = ptcv_get_model("resnet18", pretrained=True)
+        print('SENET-28')
+
+    def forward(self, x):
+        return self.model(x)        
+
+    def get_embedding(self, x):
+        return self.forward(x)
+class EmbeddingNetDenseNet(nn.Module):
+
+    def __init__(self, num_dims):
+        super().__init__()
+
+        self.model = models.densenet121(pretrained=True)
+        num_ftrs = self.model.classifier.in_features
+        self.model.fc = nn.Linear(num_ftrs, num_dims)
+
+    def forward(self, x):
+        return self.model(x)        
+
+    def get_embedding(self, x):
+        return self.forward(x)
+
 
 class SiameseNet(nn.Module):
 
     def __init__(self, num_dims: int = 256):
         super().__init__()
 
-        self.embedding_net = EmbeddingNet(num_dims)
+        self.embedding_net = EmbeddingNetV2(num_dims)
         self.pool = mp.Pool(processes = 2)
 
     def forward(self, x1, x2):
@@ -77,7 +107,7 @@ class BiRNN(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.num_classes = num_classes
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, bidirectional=True, dropout=0.3)
         self.fc = nn.Linear(hidden_size*2, num_classes)  # 2 for bidirection
 
     def forward(self, x):

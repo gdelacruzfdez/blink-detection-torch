@@ -37,10 +37,13 @@ class LSTMDataset(Dataset):
         self.classes = np.unique(self.dataframe[self.y_col])
 
     def __len__(self):
-        return len(self.dataframe)
+        return len(self.dataframe) 
 
     def getDataframeRow(self, idx):
         return self.dataframe.iloc[idx]
+
+    def getDataframe(self):
+        return self.dataframe
     
     def __getitem__(self, idx):
         selectedRow = self.dataframe.iloc[idx]
