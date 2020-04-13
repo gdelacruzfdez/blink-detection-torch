@@ -12,7 +12,7 @@ import torch
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.nn import CrossEntropyLoss, BCELoss  
 
 from dataloader import SiameseDataset, BalancedBatchSampler, LSTMDataset
@@ -33,6 +33,7 @@ def parse_args():
     return parser.parse_args()
 
 def fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, n_epochs, cuda):
+    bestf1 = 0
     for epoch in range(1, n_epochs+1):
         scheduler.step()
 
@@ -40,9 +41,14 @@ def fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, cr
         print('Epoch: {}/{}, Average train loss: {:.4f}'.format(epoch, n_epochs, train_loss))
 
         if test_loader is not None:
-            classification_report = test_epoch(eval_train_loader, eval_test_loader, model, criterion, cuda)
+            classification_report, classification_metrics = test_epoch(eval_train_loader, eval_test_loader, model, criterion, cuda)
             print('Test Epoch: {}/{}'.format(epoch, n_epochs))
             print(classification_report)
+            print(classification_metrics)
+            if classification_metrics[2] > bestf1:
+                print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(classification_metrics[2],bestf1))
+                bestf1 = classification_metrics[2]
+                torch.save(model.state_dict(),"siamese_model_resnet18_best_ep_2.pt")
 
 
 def train_epoch(train_loader, model, criterion, optimizer, cuda):
@@ -80,7 +86,8 @@ def test_epoch(train_loader, test_loader, model, criterion, cuda):
     nc.fit(train_embeddings, train_targets)
     predictions = nc.predict(test_embeddings)
     classification_report = metrics.classification_report(test_targets, predictions, target_names=['Open', 'Closed'])
-    return classification_report 
+    classification_metrics = metrics.precision_recall_fscore_support(test_targets, predictions, average='macro')
+    return classification_report, classification_metrics
 
 
 def extract_embeddings(loader, model, cuda):
@@ -148,25 +155,25 @@ def main():
         test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
         test_set = SiameseDataset(test_dataset_dirs, test_transform)
         test_batch_sampler = BalancedBatchSampler(test_set.targets, n_classes=2, n_samples=args.batch_size)
+        #test_loader = DataLoader(test_set, batch_size=args.batch_size, num_workers=8)
         test_loader = DataLoader(test_set, batch_sampler=test_batch_sampler, num_workers=8)
     
         eval_test_set = LSTMDataset(test_dataset_dirs, test_transform)    
         eval_test_loader = DataLoader(eval_test_set, batch_size=args.batch_size, shuffle=False)
         print(test_set)
 
-#    model = SiameseNet(args.dims)
     model = SiameseNetV2(args.dims)
     if cuda:
         model = model.cuda()
 
-#    criterion = ContrastiveLoss(margin=0)
     criterion = BCELoss()
-    optimizer = Adam(model.parameters(), lr=1e-4, weight_decay=1e-3)
-    scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
+    optimizer = Adam(model.parameters(), lr=1e-4)
+    #optimizer = Adam(model.parameters(), lr=1e-4, weight_decay=1e-3)
+    scheduler = StepLR(optimizer, 5, gamma=0.1, last_epoch=-1)
+    #scheduler = ReduceLROnPlateau(optimizer, 'min', patience=8)
 
     fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, args.epochs, cuda)
     
-    torch.save(model.state_dict(),"siamese_model_resnet18_{}ep.pt".format(args.epochs))
 
 
 

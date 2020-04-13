@@ -38,6 +38,7 @@ def parse_args():
     return parser.parse_args()
 
 def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, scheduler, n_epochs, cuda, args):
+    bestf1 = 0
     for epoch in range(1, n_epochs + 1):
         scheduler.step()
 
@@ -47,6 +48,10 @@ def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, sched
         if test_loader is not None:
             f1, precision, recall, fp, fn, tp= test_epoch(test_loader, model, cnn_model, criterion, cuda, args)
             print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(epoch, n_epochs, f1, precision, recall, tp, fp, fn))
+            if f1 > bestf1:
+                print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(f1,bestf1))
+                bestf1 = f1
+                torch.save(model.state_dict(),"lstm_model_best_ep.pt")
 
 def perf_measure(y_actual, y_hat):
     TP = 0
@@ -75,7 +80,7 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
     FN = 0
     TP = 0
     FP = 0
-    previousFeatures = [np.zeros(())]
+    previousFeatures = [np.zeros(()) for i in range(5)]
     progress = tqdm(enumerate(train_loader), total=len(train_loader), desc='Training', file=sys.stdout)
     for batch_idx, data in progress:
         samples, targets = data
@@ -88,6 +93,8 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
         if features.numel() <  args.dims * args.batch_size:
             continue
         features = features.reshape(-1, args.sequence_len, args.dims)
+        
+
         outputs = model(features)
 
 

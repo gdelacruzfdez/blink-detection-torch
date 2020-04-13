@@ -11,7 +11,7 @@ class EmbeddingNet(nn.Module):
     def __init__(self, num_dims):
         super().__init__()
 
-        self.model = models.resnet50(pretrained=True)
+        self.model = models.resnet18(pretrained=True)
         num_ftrs = self.model.fc.in_features
         self.model.fc = nn.Linear(num_ftrs, num_dims)
 
@@ -55,7 +55,7 @@ class SiameseNet(nn.Module):
     def __init__(self, num_dims: int = 256):
         super().__init__()
 
-        self.embedding_net = EmbeddingNetV2(num_dims)
+        self.embedding_net = EmbeddingNet(num_dims)
         self.pool = mp.Pool(processes = 2)
 
     def forward(self, x1, x2):
