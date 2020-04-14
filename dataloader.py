@@ -14,14 +14,13 @@ SAME_CLASS = 1
 
 class LSTMDataset(Dataset):
 
-    def __init__(self, paths, transform):
+    def __init__(self, paths, transform, partial_blinks=False):
         self.x_col = 'complete_path'
         self.y_col = 'blink_id'
         self.transform = transform
+        self.partial_blinks = partial_blinks
         dataframes = []
-        print(paths)
         for root in paths:
-            print(root)
             csvFilePath = root + '.csv'
             dataframe = pd.read_csv(csvFilePath)
             dataframe['base_path'] = root
@@ -33,6 +32,9 @@ class LSTMDataset(Dataset):
             dataframes.append(dataframe)
         
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
+        self.dataframe['blink_type'] = (self.dataframe['blink_id'].astype(int) > 0) + self.dataframe['blink'].astype(int)
+        self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
+
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
 
@@ -48,7 +50,10 @@ class LSTMDataset(Dataset):
     def __getitem__(self, idx):
         selectedRow = self.dataframe.iloc[idx]
         sample = Image.open(selectedRow['complete_path'])
-        target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
+        if self.partial_blinks:
+            target = selectedRow['blink_type']
+        else:
+            target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
         if self.transform is not None:
             sample = self.transform(sample)
 

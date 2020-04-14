@@ -1,8 +1,26 @@
 
+EYE_OPEN = 0
+EYE_PARTIALLY_CLOSED = 1
+EYE_CLOSED = 2
+
+PARTIAL_BLINK = 0
+COMPLETE_BLINK = 1
+
 def evaluate(dataframe):
     true_blinks = deleteNonVisibleBlinks(convertAnnotationToBlinks(dataframe, 'blink_id'))
+    print('POSITIVOS:', len(true_blinks))
     pred_blinks = deleteNonVisibleBlinks(convertAnnotationToBlinks(dataframe, 'blink_id_pred'))
+    print('PREDICCIONES:', len(pred_blinks))
     return calculateResultsStatistics(true_blinks, pred_blinks)
+
+def evaluatePartialBlinks(dataframe):
+    true_blinks =  convertToIntervalsPartialComplete(dataframe,'blink_type')
+    partial_true_blinks, complete_true_blinks =  extractPartialAndFullBlinks(true_blinks)
+    print('LEN TRUE', len(partial_true_blinks), len(complete_true_blinks))
+    pred_blinks =  convertToIntervalsPartialComplete(dataframe, 'blink_type_pred')
+    partial_pred_blinks, complete_pred_blinks = extractPartialAndFullBlinks(pred_blinks)
+    print('LEN PRED', len(partial_pred_blinks), len(complete_pred_blinks))
+    return calculateResultsStatistics(complete_true_blinks, complete_pred_blinks)
 
 def convertAnnotationToBlinks(annotations, blink_col):
     blinks = []
@@ -115,3 +133,109 @@ def calculateResultsStatistics (pred_blinks, true_blinks):
         f1 = 2*precision*recall/(precision + recall)
 
     return f1, precision, recall, fp, fn, tp
+
+def convertToIntervalsPartialComplete(annotations, blink_col, min_threshold=1):
+  #the input is classic is frame part of blink or not.
+  #1 is incomplete blink
+  #2 is complete
+  # min_threshold must be 0 (strict) or 1 (loose)
+  # multi blink not divided
+    blinks = []
+
+    partial = False
+    counter = 0
+    startIndex = 0
+    index = 0
+    notVisible = False
+    while index < len(annotations.index):
+        row = annotations.loc[index]
+        if EYE_PARTIALLY_CLOSED == row[blink_col]:
+            if counter == 0:
+                partial = True
+                counter = 1
+                startIndex = index
+                if row['NV'] == True:
+                    notVisible = True
+            else:
+                if partial:
+                    counter+=1
+                    if row['NV'] == True:
+                        notVisible = True
+                else:
+                    if counter > min_threshold:
+                        blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': COMPLETE_BLINK, 'notVisible': notVisible})
+                        notVisible = False
+                    partial = True
+                    counter = 1
+                    startIndex = index
+                    if row['NV'] == True:
+                        notVisible = True
+        elif EYE_CLOSED == row[blink_col]:
+            if counter == 0:
+                partial = False
+                counter = 1
+                startIndex = index
+                if row['NV'] == True:
+                    notVisible = True
+            else:
+                if not partial:
+                    counter+=1
+                    if row['NV'] == True:
+                        notVisible = True
+                else:
+                    if counter > min_threshold:
+                        blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': PARTIAL_BLINK, 'notVisible': notVisible})
+                        notVisible = False
+                    partial = False
+                    counter = 1
+                    startIndex = index
+                    if row['NV'] == True:
+                        notVisible = True
+        else:
+            if counter > min_threshold:
+                if partial:
+                    blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': PARTIAL_BLINK, 'notVisible': notVisible})
+                else:
+                    blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': COMPLETE_BLINK, 'notVisible': notVisible})
+            notVisible = False
+            counter = 0
+        
+        index+=1
+    
+    return blinks
+                    
+def mergeNeighbourBlinks(blinks):
+    results = []
+    i = 1
+    while i < len(blinks):
+        if blinks[i-1]['end'] + 1 != blinks[i]['start']:
+            results.append(blinks[i-1])
+            i+=1
+        else:
+            blink = {'start': blinks[i-1]['start'], 'notVisible':blinks[i-1]['notVisible'] or blinks[i]['notVisible'], 'end': blinks[i]['end']}
+            i+=1
+            while i < len(blinks) and blink['end']+1 == blinks[i]['start']:
+                blink = {'start': blinks[i-1]['start'],'notVisible':blinks[i-1]['notVisible'] or blinks[i]['notVisible'], 'end': blinks[i]['end']}
+                i+=1
+            blinks[i-1]=blink
+        
+        if i ==len(blinks):
+            results.append(blinks[i-1])
+    return results
+
+def extractPartialAndFullBlinks(blinks):
+    partial = []
+    full = []
+    for b in blinks:
+        if PARTIAL_BLINK == b['blink_type']:
+            partial.append(b)
+        else:
+            full.append(b)
+    return deleteNonVisibleBlinks(mergeNeighbourBlinks(partial)), deleteNonVisibleBlinks(mergeNeighbourBlinks(full))
+
+
+
+                    
+
+
+      

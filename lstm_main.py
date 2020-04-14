@@ -51,7 +51,7 @@ def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, sched
             if f1 > bestf1:
                 print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(f1,bestf1))
                 bestf1 = f1
-                torch.save(model.state_dict(),"lstm_model_best_ep.pt")
+                torch.save(model.state_dict(),"lstm_model_best_ep_correct.pt")
 
 def perf_measure(y_actual, y_hat):
     TP = 0
