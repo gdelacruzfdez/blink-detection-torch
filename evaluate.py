@@ -96,8 +96,9 @@ def test(test_loader, model, cnn_model, cuda, args):
             progress.set_description('Test Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(acc,f1, precision, recall, TP, TN, FP, FN))
     dataframe = test_loader.dataset.getDataframe().copy()
     dataframe = dataframe[:len(predictions)]
-    dataframe['blink_id_pred'] = predictions
-    return evaluate(dataframe)
+    predictionsDataframe = dataframe.copy()
+    predictionsDataframe['blink_id'] = predictions
+    return evaluate(dataframe, predictionsDataframe)
 
 
 def main():

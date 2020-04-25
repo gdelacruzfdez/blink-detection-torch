@@ -6,23 +6,225 @@ EYE_CLOSED = 2
 PARTIAL_BLINK = 0
 COMPLETE_BLINK = 1
 
+import csv
+
 def evaluate(dataframe):
-    true_blinks = deleteNonVisibleBlinks(convertAnnotationToBlinks(dataframe, 'blink_id'))
-    print('POSITIVOS:', len(true_blinks))
-    pred_blinks = deleteNonVisibleBlinks(convertAnnotationToBlinks(dataframe, 'blink_id_pred'))
-    print('PREDICCIONES:', len(pred_blinks))
-    return calculateResultsStatistics(true_blinks, pred_blinks)
+    return extractBlinks(dataframe)
 
 def evaluatePartialBlinks(dataframe):
-    true_blinks =  convertToIntervalsPartialComplete(dataframe,'blink_type')
-    partial_true_blinks, complete_true_blinks =  extractPartialAndFullBlinks(true_blinks)
-    print('LEN TRUE', len(partial_true_blinks), len(complete_true_blinks))
-    pred_blinks =  convertToIntervalsPartialComplete(dataframe, 'blink_type_pred')
-    partial_pred_blinks, complete_pred_blinks = extractPartialAndFullBlinks(pred_blinks)
-    print('LEN PRED', len(partial_pred_blinks), len(complete_pred_blinks))
-    return calculateResultsStatistics(complete_true_blinks, complete_pred_blinks)
+    return extractPartialCompleteBlinks(dataframe)
 
-def convertAnnotationToBlinks(annotations, blink_col):
+def extractPartialCompleteBlinks(dataframe):
+    leftFrames = dataframe[dataframe['eye']=='LEFT'].reset_index()
+    rightFrames = dataframe[dataframe['eye']=='RIGHT'].reset_index()
+
+    numVideos = dataframe['video'].max()
+
+
+    allPartialLeftBlinks = []
+    allPartialRightBlinks = []
+    allCompleteLeftBlinks = []
+    allCompleteRightBlinks = []
+
+    db_partial = 0
+    fn_partial = 0
+    fp_partial = 0
+    tp_partial = 0
+
+    db_complete = 0
+    fn_complete = 0
+    fp_complete = 0
+    tp_complete = 0
+
+
+
+    for i in range(1,numVideos+1):
+        left = leftFrames[leftFrames['video']==i].reset_index()
+        right = rightFrames[rightFrames['video']==i].reset_index()
+
+        partial_left_blinks, complete_left_blinks =  extractPartialAndFullBlinks(convertAnnotationToBlinks(left))
+        partial_right_blinks, complete_right_blinks =  extractPartialAndFullBlinks(convertAnnotationToBlinks(right))
+        pred_partial_left_blinks, pred_complete_left_blinks =  extractPartialAndFullBlinks(convertPredictionsToBlinks(left))
+        pred_partial_right_blinks, pred_complete_right_blinks =  extractPartialAndFullBlinks(convertPredictionsToBlinks(right))
+        
+        partial_left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(partial_left_blinks))
+        partial_right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(partial_right_blinks))
+        complete_left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(complete_left_blinks))
+        complete_right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(complete_right_blinks))
+
+        pred_partial_left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(pred_partial_left_blinks))
+        pred_partial_right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(pred_partial_right_blinks))
+        pred_complete_left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(pred_complete_left_blinks))
+        pred_complete_right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(pred_complete_right_blinks))
+        
+        allPartialLeftBlinks.extend(partial_left_blinks)
+        allPartialRightBlinks.extend(partial_right_blinks)
+        allCompleteLeftBlinks.extend(complete_left_blinks)
+        allCompleteRightBlinks.extend(complete_right_blinks)
+
+        fp_partial_left, fn_partial_left, db_partial_left, tp_partial_left = calculateConfussionMatrix(pred_partial_left_blinks, partial_left_blinks)
+        fp_partial_right, fn_partial_right, db_partial_right, tp_partial_right = calculateConfussionMatrix(pred_partial_right_blinks, partial_right_blinks)
+        fp_complete_left, fn_complete_left, db_complete_left, tp_complete_left = calculateConfussionMatrix(pred_complete_left_blinks, complete_left_blinks)
+        fp_complete_right, fn_complete_right, db_complete_right, tp_complete_right = calculateConfussionMatrix(pred_complete_right_blinks, complete_right_blinks)
+
+
+        db_partial += db_partial_left + db_partial_right
+        fn_partial += fn_partial_left + fn_partial_right
+        fp_partial += fp_partial_left + fp_partial_right
+        tp_partial += tp_partial_left + tp_partial_right
+
+        db_complete += db_complete_left + db_complete_right
+        fn_complete += fn_complete_left + fn_complete_right
+        fp_complete += fp_complete_left + fp_complete_right
+        tp_complete += tp_complete_left + tp_complete_right
+
+
+    print(len(allPartialLeftBlinks),len(allPartialRightBlinks), len(allCompleteLeftBlinks), len(allCompleteRightBlinks) )
+
+    return (calculateStatistics(fp_partial, fn_partial, db_partial, tp_partial)), (calculateStatistics(fp_complete, fn_complete, db_complete, tp_complete))
+
+
+def extractBlinks(dataframe):
+    leftFrames = dataframe[dataframe['eye']=='LEFT'].reset_index()
+    rightFrames = dataframe[dataframe['eye']=='RIGHT'].reset_index()
+
+    numVideos = dataframe['video'].max()
+
+    all_left_blinks = []
+    all_right_blinks = []
+    all_pred_left_blinks = []
+    all_pred_right_blinks = []
+
+    db = 0
+    fn = 0
+    fp = 0
+    tp = 0
+
+    for i in range(1,numVideos+1):
+        left = leftFrames[leftFrames['video']==i].reset_index()
+        right = rightFrames[rightFrames['video']==i].reset_index()
+
+        left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertAnnotationToBlinks(left)))
+        right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertAnnotationToBlinks(right)))
+        pred_left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertPredictionsToBlinks(left)))
+        pred_right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertPredictionsToBlinks(right)))
+    
+        fp_left, fn_left, db_left, tp_left = calculateConfussionMatrix(pred_left_blinks, left_blinks)
+        fp_right, fn_right, db_right, tp_right = calculateConfussionMatrix(pred_right_blinks, right_blinks)
+
+
+        db += db_left + db_right
+        fn += fn_left + fn_right
+        fp += fp_left + fp_right
+        tp += tp_left + tp_right
+
+        all_left_blinks.extend(left_blinks)
+        all_right_blinks.extend(right_blinks)
+        all_pred_left_blinks.extend(pred_left_blinks)
+        all_pred_right_blinks.extend(pred_right_blinks)
+
+    return calculateStatistics(fp, fn, db, tp)
+
+def extractBlinksFromPredictions(dataframe):
+    leftFrames = dataframe[dataframe['eye']=='LEFT'].reset_index()
+    rightFrames = dataframe[dataframe['eye']=='RIGHT'].reset_index()
+
+    numVideos = dataframe['video'].max()
+
+    all_left_blinks = []
+    all_right_blinks = []
+
+    for i in range(1,numVideos+1):
+        left = leftFrames[leftFrames['video']==i].reset_index()
+        right = rightFrames[rightFrames['video']==i].reset_index()
+
+        left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertPredictionsToBlinks(left)))
+        right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertPredictionsToBlinks(right)))
+
+        all_left_blinks.extend(left_blinks)
+        all_right_blinks.extend(right_blinks)
+
+    return all_left_blinks, all_right_blinks
+
+def realBlinks(annotations):
+    blinks = []
+    index = 0
+    blink_id = -1
+    while index < len(annotations.index):
+        row = annotations.loc[index]
+        if row['blink_id'] > 0:
+            blink_id = row['blink_id']
+            start = index
+            notVisible = False
+            if row['NV'] ==True:
+                notVisible = True
+            while index < len(annotations.index) and row['blink_id'] == blink_id:
+                index+=1
+                row = annotations.loc[index]
+            index -=1
+            end = index
+            blinks.append({'start': start, 'end':end, 'notVisible':notVisible})
+            blink_id = -1
+        index+=1
+    return blinks
+
+
+def mergeDoubleBlinks(blinks):
+    i = 1
+    while i< len(blinks):
+        if blinks[i-1]['end'] == blinks[i]['start'] -1:
+            blinks[i]['start']=blinks[i-1]['start']
+            i-=1
+            blinks.pop(i)
+        i+=1
+    if len(blinks)>1 and blinks[-2]['end']==blinks[-1]['start']-1:
+        blinks[-1]['start'] = blinks[-1]['start']
+        blinks.pop(-2)
+    return blinks
+
+def convertAnnotationToBlinks(annotations):
+    i=0
+    blinks = []
+    while i < len(annotations):
+        if(annotations.loc[i]['blink_id']!= -1):
+            id = annotations.loc[i]['blink_id']
+            fullyClosed = False
+            notVisible = False
+            start = annotations.loc[i]['frameId']
+            while i< len(annotations) and annotations.loc[i]['blink_id']==id:
+                if annotations.loc[i]['blink'] == 1:
+                    fullyClosed = True
+                if annotations.loc[i]['NV'] == 1:
+                    notVisible= True
+                i+=1
+            i-=1
+            end = annotations.loc[i]['frameId']
+            blinks.append({'start': start, 'end':end, 'notVisible':notVisible, 'completeBlink': fullyClosed})
+        i+=1
+    return blinks
+
+
+def convertPredictionsToBlinks(annotations):
+    i=0
+    blinks = []
+    while i < len(annotations):
+        if(annotations.loc[i]['blink_id_pred'] > 0):
+            fullyClosed = False
+            notVisible = False
+            start = annotations.loc[i]['frameId']
+            while i< len(annotations) and annotations.loc[i]['blink_id_pred'] > 0:
+                if annotations.loc[i]['blink_id_pred'] == EYE_CLOSED:
+                    fullyClosed = True
+                if annotations.loc[i]['NV'] == 1:
+                    notVisible= True
+                i+=1
+            i-=1
+            end = annotations.loc[i]['frameId']
+            blinks.append({'start': start, 'end':end, 'notVisible':notVisible, 'completeBlink': fullyClosed})
+        i+=1
+    return blinks
+
+def convertAnnotationToBlinksOld(annotations, blink_col):
     blinks = []
     index = 0
     while index < len(annotations.index):
@@ -51,7 +253,9 @@ def deleteNonVisibleBlinks(blinks):
             newBlinks.append(blink)
     return newBlinks
 
-def calcFP(detectedBlinks, groundTruth):
+def calcFP(detectedBlinksOriginal, groundTruthOriginal):
+    detectedBlinks = detectedBlinksOriginal.copy()
+    groundTruth = groundTruthOriginal.copy()
     i=0
     j=0
     blinkFPCounter=0
@@ -113,12 +317,14 @@ def iou(blink1,blink2):
         return 0
     return(unionCount/float(max-min+1))
 
-def calculateResultsStatistics (pred_blinks, true_blinks):
+def calculateConfussionMatrix(pred_blinks, true_blinks):
     fp = calcFP(pred_blinks,true_blinks)
     fn = calcFP(true_blinks, pred_blinks)
     db = len(true_blinks)
     tp = db - fp
+    return fp, fn, db, tp
 
+def calculateStatistics(fp, fn, db, tp):
     precision = 0
     if db > 0:
         precision = tp/db
@@ -132,77 +338,8 @@ def calculateResultsStatistics (pred_blinks, true_blinks):
     if(precision + recall) > 0:
         f1 = 2*precision*recall/(precision + recall)
 
-    return f1, precision, recall, fp, fn, tp
+    return f1, precision, recall, fp, fn, tp, db
 
-def convertToIntervalsPartialComplete(annotations, blink_col, min_threshold=1):
-  #the input is classic is frame part of blink or not.
-  #1 is incomplete blink
-  #2 is complete
-  # min_threshold must be 0 (strict) or 1 (loose)
-  # multi blink not divided
-    blinks = []
-
-    partial = False
-    counter = 0
-    startIndex = 0
-    index = 0
-    notVisible = False
-    while index < len(annotations.index):
-        row = annotations.loc[index]
-        if EYE_PARTIALLY_CLOSED == row[blink_col]:
-            if counter == 0:
-                partial = True
-                counter = 1
-                startIndex = index
-                if row['NV'] == True:
-                    notVisible = True
-            else:
-                if partial:
-                    counter+=1
-                    if row['NV'] == True:
-                        notVisible = True
-                else:
-                    if counter > min_threshold:
-                        blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': COMPLETE_BLINK, 'notVisible': notVisible})
-                        notVisible = False
-                    partial = True
-                    counter = 1
-                    startIndex = index
-                    if row['NV'] == True:
-                        notVisible = True
-        elif EYE_CLOSED == row[blink_col]:
-            if counter == 0:
-                partial = False
-                counter = 1
-                startIndex = index
-                if row['NV'] == True:
-                    notVisible = True
-            else:
-                if not partial:
-                    counter+=1
-                    if row['NV'] == True:
-                        notVisible = True
-                else:
-                    if counter > min_threshold:
-                        blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': PARTIAL_BLINK, 'notVisible': notVisible})
-                        notVisible = False
-                    partial = False
-                    counter = 1
-                    startIndex = index
-                    if row['NV'] == True:
-                        notVisible = True
-        else:
-            if counter > min_threshold:
-                if partial:
-                    blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': PARTIAL_BLINK, 'notVisible': notVisible})
-                else:
-                    blinks.append({'start': startIndex, 'end': index - 1, 'blink_type': COMPLETE_BLINK, 'notVisible': notVisible})
-            notVisible = False
-            counter = 0
-        
-        index+=1
-    
-    return blinks
                     
 def mergeNeighbourBlinks(blinks):
     results = []
@@ -227,11 +364,11 @@ def extractPartialAndFullBlinks(blinks):
     partial = []
     full = []
     for b in blinks:
-        if PARTIAL_BLINK == b['blink_type']:
+        if PARTIAL_BLINK == b['completeBlink']:
             partial.append(b)
         else:
             full.append(b)
-    return deleteNonVisibleBlinks(mergeNeighbourBlinks(partial)), deleteNonVisibleBlinks(mergeNeighbourBlinks(full))
+    return partial, full
 
 
 

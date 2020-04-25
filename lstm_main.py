@@ -12,7 +12,7 @@ import torch
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.nn import BCELoss, CrossEntropyLoss
 
 from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler
@@ -21,7 +21,7 @@ from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform, LSTMImgAugTransform
 from evaluation import evaluate
 
-DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize'
+DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize2'
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -39,8 +39,13 @@ def parse_args():
 
 def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, scheduler, n_epochs, cuda, args):
     bestf1 = 0
+    currentf1 = 0
+    best_model_path = 'lstm_best.pt'
     for epoch in range(1, n_epochs + 1):
-        scheduler.step()
+        if scheduler.num_bad_epochs == scheduler.patience and bestf1!=currentf1:
+            print('Reducing learning rate and restoring best weights to F1: ' + str(bestf1))
+            model.load_state_dict(torch.load(best_model_path))
+        scheduler.step(currentf1)
 
         train_loss, train_accuracy= train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args)
         print('Epoch: {}/{}, Average train loss: {:.4f}, Average train accuracy: {:.4f}'.format(epoch, n_epochs, train_loss, train_accuracy))
@@ -48,10 +53,13 @@ def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, sched
         if test_loader is not None:
             f1, precision, recall, fp, fn, tp= test_epoch(test_loader, model, cnn_model, criterion, cuda, args)
             print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(epoch, n_epochs, f1, precision, recall, tp, fp, fn))
-            if f1 > bestf1:
+            currentf1 = f1
+            if currentf1 > bestf1:
                 print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(f1,bestf1))
-                bestf1 = f1
-                torch.save(model.state_dict(),"lstm_model_best_ep_correct.pt")
+                print('')
+                bestf1 = currentf1
+                torch.save(model.state_dict(), best_model_path)
+                torch.save(model.state_dict(),"lstm_model_best_ep_correct_3.pt")
 
 def perf_measure(y_actual, y_hat):
     TP = 0
@@ -219,9 +227,9 @@ def main():
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
     criterion = CrossEntropyLoss()
-
     optimizer = Adam(lstm_model.parameters(), lr=1e-4)
-    scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
+    #scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
+    scheduler = ReduceLROnPlateau(optimizer, 'max', patience=8, factor=0.1, verbose=True)
 
     fit(train_loader, test_loader, lstm_model, cnn_model, criterion, optimizer, scheduler, args.epochs, cuda, args)
 

@@ -20,6 +20,62 @@ class LSTMDataset(Dataset):
         self.transform = transform
         self.partial_blinks = partial_blinks
         dataframes = []
+        maxNumVideo = 0
+        for root in paths:
+            csvFilePath = root + '.csv'
+            dataframe = pd.read_csv(csvFilePath)
+            dataframe['base_path'] = root
+
+            completePaths = []
+            for idx, row in dataframe.iterrows():
+                completePaths.append(os.path.join(row['base_path'], row['frame']))
+            dataframe['complete_path'] = completePaths
+            dataframeMaxVideo = dataframe['video'].max()
+            dataframe['video'] = dataframe['video'] +  maxNumVideo
+            maxNumVideo = dataframeMaxVideo
+            dataframes.append(dataframe)
+        
+        self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
+        self.dataframe['blink_type'] = (self.dataframe['blink_id'].astype(int) > 0) + self.dataframe['blink'].astype(int)
+        self.dataframe['blink_id_pred'] = 0
+        self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
+        self.targets = self.dataframe[self.y_col]
+        self.classes = np.unique(self.dataframe[self.y_col])
+
+    def __len__(self):
+        return len(self.dataframe) 
+
+    def getDataframeRow(self, idx):
+        return self.dataframe.iloc[idx]
+
+    def getDataframe(self):
+        return self.dataframe
+    
+    def __getitem__(self, idx):
+        selectedRow = self.dataframe.iloc[idx]
+        if 'NOT_VISIBLE' in selectedRow['complete_path']:
+            sample = Image.new('RGB', (100,100))
+        else:
+            sample = Image.open(selectedRow['complete_path'])
+        if self.partial_blinks:
+            target = selectedRow['blink_type']
+        else:
+            target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
+        if self.transform is not None:
+            sample = self.transform(sample)
+
+        return sample, target
+
+
+
+class LSTMDatasetOld(Dataset):
+
+    def __init__(self, paths, transform, partial_blinks=False):
+        self.x_col = 'complete_path'
+        self.y_col = 'blink_id'
+        self.transform = transform
+        self.partial_blinks = partial_blinks
+        dataframes = []
         for root in paths:
             csvFilePath = root + '.csv'
             dataframe = pd.read_csv(csvFilePath)
@@ -34,7 +90,12 @@ class LSTMDataset(Dataset):
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
         self.dataframe['blink_type'] = (self.dataframe['blink_id'].astype(int) > 0) + self.dataframe['blink'].astype(int)
         self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
-
+        blinks = deleteNonVisibleBlinks(realBlinks(self.dataframe))
+        true_blinks = deleteNonVisibleBlinks(convertAnnotationToBlinks(self.dataframe, 'blink_id'))
+        print('BLINKS:', len(blinks), len(true_blinks))
+        true_blinks =  convertToIntervalsPartialComplete(self.dataframe,'blink_type')
+        partial_true_blinks, complete_true_blinks =  extractPartialAndFullBlinks(true_blinks)
+        print('LEN TRUE', len(partial_true_blinks), len(complete_true_blinks))
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
 
@@ -58,6 +119,7 @@ class LSTMDataset(Dataset):
             sample = self.transform(sample)
 
         return sample, target
+
 
 
 class SiameseDataset(Dataset):
