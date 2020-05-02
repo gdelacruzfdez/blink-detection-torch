@@ -219,12 +219,14 @@ def main():
 
     train_set = LSTMDataset(dataset_dirs, train_transform)    
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
-    print('DATASET LENGTH', len(train_loader.dataset.getDataframe()))
+    print('TRAIN DATASET LENGTH', len(train_loader.dataset.getDataframe()))
 
     test_dataset_dirs = args.test_dataset_dirs.split(',')
     test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
     test_set = LSTMDataset(test_dataset_dirs, test_transform)    
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
+    
+    print('TEST DATASET LENGTH', len(test_loader.dataset.getDataframe()))
 
     criterion = CrossEntropyLoss()
     optimizer = Adam(lstm_model.parameters(), lr=1e-4)

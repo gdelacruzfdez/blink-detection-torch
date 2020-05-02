@@ -16,7 +16,8 @@ class LSTMDataset(Dataset):
 
     def __init__(self, paths, transform, partial_blinks=False):
         self.x_col = 'complete_path'
-        self.y_col = 'blink_id'
+        #self.y_col = 'blink_id'
+        self.y_col = 'blink'
         self.transform = transform
         self.partial_blinks = partial_blinks
         dataframes = []
@@ -38,7 +39,10 @@ class LSTMDataset(Dataset):
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
         self.dataframe['blink_type'] = (self.dataframe['blink_id'].astype(int) > 0) + self.dataframe['blink'].astype(int)
         self.dataframe['blink_id_pred'] = 0
+        self.dataframe['blink'] = self.dataframe['blink'].astype(int)
         self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
+        print('Number of blink frames', self.dataframe[self.dataframe['blink_id'] >0].count())
+        print('Number of closed eyes frames', self.dataframe[self.dataframe['blink'] >0].count())
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
 
@@ -60,7 +64,8 @@ class LSTMDataset(Dataset):
         if self.partial_blinks:
             target = selectedRow['blink_type']
         else:
-            target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
+            #target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
+            target = selectedRow[self.y_col]
         if self.transform is not None:
             sample = self.transform(sample)
 
@@ -149,6 +154,9 @@ class SiameseDataset(Dataset):
 
     def getDataframeRow(self, idx):
         return self.dataframe.iloc[idx]
+
+    def getDataframe(self):
+        return self.dataframe
     
     def __getitem__(self, idx):
         target = int(rand.random_sample() > POSITIVE_NEGATIVE_RATIO)

@@ -41,14 +41,15 @@ def fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, cr
         print('Epoch: {}/{}, Average train loss: {:.4f}'.format(epoch, n_epochs, train_loss))
 
         if test_loader is not None:
-            classification_report, classification_metrics = test_epoch(eval_train_loader, eval_test_loader, model, criterion, cuda)
+            classification_report, classification_metrics , confussion_matrix = test_epoch(eval_train_loader, eval_test_loader, model, criterion, cuda)
             print('Test Epoch: {}/{}'.format(epoch, n_epochs))
             print(classification_report)
             print(classification_metrics)
+            print(confussion_matrix)
             if classification_metrics[2] > bestf1:
                 print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(classification_metrics[2],bestf1))
                 bestf1 = classification_metrics[2]
-                torch.save(model.state_dict(),"siamese_model_resnet18_best_ep_2.pt")
+                torch.save(model.state_dict(),"siamese_model_resnet18_only_RTBENE.pt")
 
 
 def train_epoch(train_loader, model, criterion, optimizer, cuda):
@@ -87,7 +88,8 @@ def test_epoch(train_loader, test_loader, model, criterion, cuda):
     predictions = nc.predict(test_embeddings)
     classification_report = metrics.classification_report(test_targets, predictions, target_names=['Open', 'Closed'])
     classification_metrics = metrics.precision_recall_fscore_support(test_targets, predictions, average='macro')
-    return classification_report, classification_metrics
+    confussion_matrix = metrics.confusion_matrix(test_targets, predictions)
+    return classification_report, classification_metrics, confussion_matrix
 
 
 def extract_embeddings(loader, model, cuda):
@@ -141,7 +143,7 @@ def main():
     train_set = SiameseDataset(dataset_dirs, train_transform)    
     train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=2, n_samples=args.batch_size)
     train_loader = DataLoader(train_set, batch_sampler=train_batch_sampler, num_workers=8)
-
+    print('TRAIN DATASET LENGTH', len(train_loader.dataset.getDataframe()))
 
     eval_train_set = LSTMDataset(dataset_dirs, test_transform)    
     eval_train_loader = DataLoader(eval_train_set, batch_size=args.batch_size, shuffle=False)
@@ -160,6 +162,7 @@ def main():
     
         eval_test_set = LSTMDataset(test_dataset_dirs, test_transform)    
         eval_test_loader = DataLoader(eval_test_set, batch_size=args.batch_size, shuffle=False)
+        print('TEST DATASET LENGTH', len(test_loader.dataset.getDataframe()))
         print(test_set)
 
     model = SiameseNetV2(args.dims)
