@@ -15,8 +15,8 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.nn import BCELoss, CrossEntropyLoss
 
-from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler
-from network import EmbeddingNet, SiameseNet, SiameseNetV2, BiRNN, LSTM
+from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler, EYE_STATE_DETECTION_MODE
+from network import EmbeddingNet, SiameseNetV2, BiRNN, LSTM
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform, LSTMImgAugTransform
 from evaluation import evaluate
@@ -34,17 +34,17 @@ def parse_args():
     parser.add_argument('--lstm_layers', type=int, default=2)
     parser.add_argument('--lstm_hidden_units', type=int, default=512)
     parser.add_argument('--cnn_model', type=str)
+    parser.add_argument('--model_file', type=str)
     parser.add_argument('--sequence_len', type=int, default=100)
     return parser.parse_args()
 
 def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, scheduler, n_epochs, cuda, args):
     bestf1 = 0
     currentf1 = 0
-    best_model_path = 'lstm_f1_best.pt'
     for epoch in range(1, n_epochs + 1):
         if scheduler.num_bad_epochs == scheduler.patience and bestf1!=currentf1:
             print('Reducing learning rate and restoring best weights to F1: ' + str(bestf1))
-            model.load_state_dict(torch.load(best_model_path))
+            model.load_state_dict(torch.load(args.model_file))
         scheduler.step(currentf1)
 
         train_loss, train_accuracy= train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args)
@@ -57,6 +57,7 @@ def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, sched
             if currentf1 > bestf1:
                 print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(f1,bestf1))
                 bestf1 = currentf1
+                torch.save(model.state_dict(), args.model_file)
 
 def perf_measure(y_actual, y_hat):
     TP = 0
@@ -219,13 +220,13 @@ def main():
     dataset_dirs = args.dataset_dirs.split(',')
     dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs))
 
-    train_set = LSTMDataset(dataset_dirs, train_transform)    
+    train_set = LSTMDataset(dataset_dirs, train_transform, mode=EYE_STATE_DETECTION_MODE)
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
     print('TRAIN DATASET LENGTH', len(train_loader.dataset.getDataframe()))
 
     test_dataset_dirs = args.test_dataset_dirs.split(',')
     test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
-    test_set = LSTMDataset(test_dataset_dirs, test_transform)    
+    test_set = LSTMDataset(test_dataset_dirs, test_transform, mode=EYE_STATE_DETECTION_MODE)    
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
     
     print('TEST DATASET LENGTH', len(test_loader.dataset.getDataframe()))

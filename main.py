@@ -15,8 +15,8 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.nn import CrossEntropyLoss, BCELoss  
 
-from dataloader import SiameseDataset, BalancedBatchSampler, LSTMDataset
-from network import EmbeddingNet, SiameseNet, SiameseNetV2
+from dataloader import SiameseDataset, BalancedBatchSampler, LSTMDataset, EYE_STATE_DETECTION_MODE 
+from network import EmbeddingNet, SiameseNetV2
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform
 
@@ -30,26 +30,29 @@ def parse_args():
     parser.add_argument('--input_size', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--dims', type=int, default=256)
+    parser.add_argument('--model_file', type=str, default='model.pt')
     return parser.parse_args()
 
-def fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, n_epochs, cuda):
+def fit(train_loader, eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, n_epochs,model_file, cuda):
     bestf1 = 0
+    currentf1 = 0
     for epoch in range(1, n_epochs+1):
         scheduler.step()
 
         train_loss = train_epoch(train_loader, model, criterion, optimizer, cuda)
         print('Epoch: {}/{}, Average train loss: {:.4f}'.format(epoch, n_epochs, train_loss))
 
-        if test_loader is not None:
+        if eval_test_loader is not None:
             classification_report, classification_metrics , confussion_matrix = test_epoch(eval_train_loader, eval_test_loader, model, criterion, cuda)
             print('Test Epoch: {}/{}'.format(epoch, n_epochs))
             print(classification_report)
             print(classification_metrics)
             print(confussion_matrix)
+            currentf1 = classification_metrics[2]
             if classification_metrics[2] > bestf1:
                 print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(classification_metrics[2],bestf1))
                 bestf1 = classification_metrics[2]
-                torch.save(model.state_dict(),"siamese_model_resnet18_only_RTBENE.pt")
+                torch.save(model.state_dict(), model_file)
 
 
 def train_epoch(train_loader, model, criterion, optimizer, cuda):
@@ -66,9 +69,7 @@ def train_epoch(train_loader, model, criterion, optimizer, cuda):
         
         optimizer.zero_grad()
         outputs = model(samples1, samples2)
-        #outputs1, outputs2 = model(samples1, samples2)
         outputs = outputs.squeeze(1)
-        #loss = criterion(outputs1, outputs2, targets)
         loss = criterion(outputs, targets.float())
         loss.backward()
         optimizer.step()
@@ -142,40 +143,32 @@ def main():
     dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs))
     train_set = SiameseDataset(dataset_dirs, train_transform)    
     train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=2, n_samples=args.batch_size)
-    train_loader = DataLoader(train_set, batch_sampler=train_batch_sampler, num_workers=8)
+    train_loader = DataLoader(train_set, batch_sampler=train_batch_sampler, num_workers=16)
     print('TRAIN DATASET LENGTH', len(train_loader.dataset.getDataframe()))
 
-    eval_train_set = LSTMDataset(dataset_dirs, test_transform)    
-    eval_train_loader = DataLoader(eval_train_set, batch_size=args.batch_size, shuffle=False)
 
-
-    test_loader = None
+    eval_train_loader = None
     eval_test_loader = None
 
     if args.test_dataset_dirs != None:
         test_dataset_dirs = args.test_dataset_dirs.split(',')
         test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
-        test_set = SiameseDataset(test_dataset_dirs, test_transform)
-        test_batch_sampler = BalancedBatchSampler(test_set.targets, n_classes=2, n_samples=args.batch_size)
-        #test_loader = DataLoader(test_set, batch_size=args.batch_size, num_workers=8)
-        test_loader = DataLoader(test_set, batch_sampler=test_batch_sampler, num_workers=8)
-    
-        eval_test_set = LSTMDataset(test_dataset_dirs, test_transform)    
+        eval_train_set = LSTMDataset(dataset_dirs, test_transform, mode = EYE_STATE_DETECTION_MODE )    
+        eval_train_loader = DataLoader(eval_train_set, batch_size=args.batch_size, shuffle=False)
+        eval_test_set = LSTMDataset(test_dataset_dirs, test_transform, mode = EYE_STATE_DETECTION_MODE )    
         eval_test_loader = DataLoader(eval_test_set, batch_size=args.batch_size, shuffle=False)
-        print('TEST DATASET LENGTH', len(test_loader.dataset.getDataframe()))
-        print(test_set)
+        print('TEST DATASET LENGTH', len(eval_test_loader.dataset.getDataframe()))
 
     model = SiameseNetV2(args.dims)
     if cuda:
         model = model.cuda()
 
     criterion = BCELoss()
-    optimizer = Adam(model.parameters(), lr=1e-4)
     #optimizer = Adam(model.parameters(), lr=1e-4, weight_decay=1e-3)
-    scheduler = StepLR(optimizer, 5, gamma=0.1, last_epoch=-1)
-    #scheduler = ReduceLROnPlateau(optimizer, 'min', patience=8)
-
-    fit(train_loader, test_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, args.epochs, cuda)
+    #scheduler = ReduceLROnPlateau(optimizer, 'max', patience=8)
+    optimizer = Adam(model.parameters(), lr=1e-4)
+    scheduler = StepLR(optimizer, 10, gamma=0.1, last_epoch=-1)
+    fit(train_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, args.epochs, args.model_file, cuda)
     
 
 

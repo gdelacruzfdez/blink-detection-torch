@@ -11,17 +11,11 @@ from tqdm import tqdm
 import torch
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
-from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
-from torch.nn import BCELoss, CrossEntropyLoss
+from dataloader import SiameseDataset, LSTMDataset, BLINK_DETECTION_MODE, BLINK_COMPLETENESS_MODE, EYE_STATE_DETECTION_MODE
+from network import EmbeddingNet, SiameseNetV2, BiRNN
+from evaluation import evaluate
 
-from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler
-from network import EmbeddingNet, SiameseNet, SiameseNetV2, BiRNN, LSTM
-from loss import OnlineTripletLoss, ContrastiveLoss
-from augmentator import ImgAugTransform, LSTMImgAugTransform
-from evaluation import evaluate, convertAnnotationToBlinks, deleteNonVisibleBlinks
-
-DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize'
+DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize2'
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -33,6 +27,7 @@ def parse_args():
     parser.add_argument('--lstm_hidden_units', type=int, default=512)
     parser.add_argument('--cnn_model', type=str)
     parser.add_argument('--lstm_model', type=str)
+    parser.add_argument('--evaluation_mode', type=str, default= BLINK_DETECTION_MODE)
     parser.add_argument('--sequence_len', type=int, default=100)
     return parser.parse_args()
 
@@ -72,10 +67,18 @@ def test(test_loader, model, cnn_model, cuda, args):
         
         with torch.no_grad():
             features = cnn_model.get_embedding(samples)
+            
             if features.numel() <  args.dims * args.batch_size:
-                continue
+                zeros_features = torch.zeros(args.batch_size - features.shape[0], args.dims)
+                zeros_features = zeros_features.cuda()
+                features = torch.cat((features, zeros_features))
+                zeros_targets = torch.zeros(args.batch_size - targets.shape[0], dtype=torch.long)
+                zeros_targets = zeros_targets.cuda()
+                targets = torch.cat((targets, zeros_targets))
+
             features = features.reshape(-1, args.sequence_len, args.dims)
             outputs = model(features)
+
             targets = targets.data.cpu()
             _, predicted = torch.max(outputs.data, 1)
             predicted = predicted.data.cpu()
@@ -95,10 +98,9 @@ def test(test_loader, model, cnn_model, cuda, args):
             f1 = 2 * ( precision * recall ) / ( precision + recall ) if precision + recall > 0 else 0
             progress.set_description('Test Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(acc,f1, precision, recall, TP, TN, FP, FN))
     dataframe = test_loader.dataset.getDataframe().copy()
-    dataframe = dataframe[:len(predictions)]
-    predictionsDataframe = dataframe.copy()
-    predictionsDataframe['blink_id'] = predictions
-    return evaluate(dataframe, predictionsDataframe)
+    predictions = predictions[:len(dataframe)]
+    dataframe['pred'] = predictions
+    return evaluate(dataframe)
 
 
 def main():
@@ -107,6 +109,13 @@ def main():
     if cuda:
         print('Device: {}'.format(torch.cuda.get_device_name(0)))
 
+    num_classes = 2
+    if BLINK_DETECTION_MODE == args.evaluation_mode:
+        num_classes = 2
+    elif BLINK_COMPLETENESS_MODE == args.evaluation_mode:
+        num_classes = 3
+    elif EYE_STATE_DETECTION_MODE == args.evaluation_mode:
+        num_classes = 2
 
     cnn_model = SiameseNetV2(args.dims)
     cnn_model.load_state_dict(torch.load(args.cnn_model))
@@ -129,14 +138,10 @@ def main():
     dataset_dirs = args.dataset_dirs.split(',')
     dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs))
 
-    dataset = LSTMDataset(dataset_dirs, test_transform)    
+    dataset = LSTMDataset(dataset_dirs, test_transform, mode= args.evaluation_mode)    
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    dataframe = loader.dataset.getDataframe().copy()
-    true_blinks = deleteNonVisibleBlinks(convertAnnotationToBlinks(dataframe, 'blink_id'))
-    print('BLINKS', len(true_blinks))
-
-    f1, precision, recall, fp, fn, tp= test(loader, lstm_model, cnn_model, cuda, args)
-    print('F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(f1, precision, recall, tp, fp, fn))
+    f1, precision, recall, fp, fn, tp, db= test(loader, lstm_model, cnn_model, cuda, args)
+    print('F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {} | Total Blinks: {}'.format(f1, precision, recall, tp, fp, fn, db))
 if __name__ == '__main__':
     main()

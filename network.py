@@ -10,12 +10,8 @@ class EmbeddingNet(nn.Module):
 
     def __init__(self, num_dims):
         super().__init__()
-
-        #self.model = models.densenet121(pretrained=True)
         self.model = models.resnet18(pretrained=True)
         num_ftrs = self.model.fc.in_features
-        #num_ftrs = 1024
-        #self.model.classifier = nn.Linear(num_ftrs, num_dims)
         self.model.fc = nn.Linear(num_ftrs, num_dims)
 
     def forward(self, x):
@@ -24,50 +20,6 @@ class EmbeddingNet(nn.Module):
     def get_embedding(self, x):
         return self.forward(x)
 
-class EmbeddingNetV2(nn.Module):
-
-    def __init__(self, num_dims):
-        super().__init__()
-
-        self.model = ptcv_get_model("resnet50", pretrained=True)
-        print('SENET-28')
-
-    def forward(self, x):
-        return self.model(x)        
-
-    def get_embedding(self, x):
-        return self.forward(x)
-
-class EmbeddingNetDenseNet(nn.Module):
-
-    def __init__(self, num_dims):
-        super().__init__()
-
-        self.model = models.densenet121(pretrained=True)
-        num_ftrs = self.model.classifier.in_features
-        self.model.fc = nn.Linear(num_ftrs, num_dims)
-
-    def forward(self, x):
-        return self.model(x)        
-
-    def get_embedding(self, x):
-        return self.forward(x)
-
-
-class SiameseNet(nn.Module):
-
-    def __init__(self, num_dims: int = 256):
-        super().__init__()
-
-        self.embedding_net = EmbeddingNet(num_dims)
-        self.pool = mp.Pool(processes = 2)
-
-    def forward(self, x1, x2):
-        output1, output2 = self.pool.map(self.get_embedding, [x1, x2])
-        return output1, output2
-
-    def get_embedding(self, x):
-        return self.embedding_net(x)
 
 class SiameseNetV2(nn.Module):
 
@@ -85,21 +37,6 @@ class SiameseNetV2(nn.Module):
         out = self.fc(l1_distance)
         y_prob = self.sigmoid(out)
         return y_prob
-
-    def get_embedding(self, x):
-        return self.embedding_net(x)
-
-class TripletNet(nn.Module):
-
-    def __init__(self, num_dims: int = 16):
-        super().__init__()
-
-        self.embedding_net = EmbeddingNet(num_dims)
-        self.pool = mp.Pool(processes=3)
-
-    def forward(self, x1, x2, x3):
-        output1, output2, output3 = self.pool.map(self.get_embedding, [x1, x2, x3])
-        return output1, output2, output3
 
     def get_embedding(self, x):
         return self.embedding_net(x)

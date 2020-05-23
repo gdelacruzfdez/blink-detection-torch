@@ -6,20 +6,22 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import BatchSampler
 import pandas as pd
 from PIL import Image
-from network import SiameseNet
+from evaluation import evaluate
 
 POSITIVE_NEGATIVE_RATIO = 0.5
 SAME_CLASS = 1
 
+BLINK_DETECTION_MODE = 'BLINK_DETECTION_MODE'
+BLINK_COMPLETENESS_MODE = 'BLINK_COMPLETENESS_MODE'
+EYE_STATE_DETECTION_MODE = 'EYE_STATE_DETECTION_MODE'
+
 
 class LSTMDataset(Dataset):
 
-    def __init__(self, paths, transform, partial_blinks=False):
+    def __init__(self, paths, transform, mode = BLINK_DETECTION_MODE):
         self.x_col = 'complete_path'
-        #self.y_col = 'blink_id'
-        self.y_col = 'blink'
+        self.y_col = 'target'
         self.transform = transform
-        self.partial_blinks = partial_blinks
         dataframes = []
         maxNumVideo = 0
         for root in paths:
@@ -37,12 +39,16 @@ class LSTMDataset(Dataset):
             dataframes.append(dataframe)
         
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
-        self.dataframe['blink_type'] = (self.dataframe['blink_id'].astype(int) > 0) + self.dataframe['blink'].astype(int)
-        self.dataframe['blink_id_pred'] = 0
-        self.dataframe['blink'] = self.dataframe['blink'].astype(int)
+
+        if BLINK_DETECTION_MODE == mode:
+            self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int)
+        elif BLINK_COMPLETENESS_MODE == mode:
+            self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
+        elif EYE_STATE_DETECTION_MODE == mode:
+            self.dataframe[self.y_col] = (self.dataframe['blink'] > 0).astype(int)
+
+        self.dataframe['pred'] = 0
         self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
-        print('Number of blink frames', self.dataframe[self.dataframe['blink_id'] >0].count())
-        print('Number of closed eyes frames', self.dataframe[self.dataframe['blink'] >0].count())
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
 
@@ -61,70 +67,13 @@ class LSTMDataset(Dataset):
             sample = Image.new('RGB', (100,100))
         else:
             sample = Image.open(selectedRow['complete_path'])
-        if self.partial_blinks:
-            target = selectedRow['blink_type']
-        else:
-            #target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
-            target = selectedRow[self.y_col]
-        if self.transform is not None:
-            sample = self.transform(sample)
-
-        return sample, target
-
-
-
-class LSTMDatasetOld(Dataset):
-
-    def __init__(self, paths, transform, partial_blinks=False):
-        self.x_col = 'complete_path'
-        self.y_col = 'blink_id'
-        self.transform = transform
-        self.partial_blinks = partial_blinks
-        dataframes = []
-        for root in paths:
-            csvFilePath = root + '.csv'
-            dataframe = pd.read_csv(csvFilePath)
-            dataframe['base_path'] = root
-
-            completePaths = []
-            for idx, row in dataframe.iterrows():
-                completePaths.append(os.path.join(row['base_path'], row['frame']))
-            dataframe['complete_path'] = completePaths
-            dataframes.append(dataframe)
         
-        self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
-        self.dataframe['blink_type'] = (self.dataframe['blink_id'].astype(int) > 0) + self.dataframe['blink'].astype(int)
-        self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
-        blinks = deleteNonVisibleBlinks(realBlinks(self.dataframe))
-        true_blinks = deleteNonVisibleBlinks(convertAnnotationToBlinks(self.dataframe, 'blink_id'))
-        print('BLINKS:', len(blinks), len(true_blinks))
-        true_blinks =  convertToIntervalsPartialComplete(self.dataframe,'blink_type')
-        partial_true_blinks, complete_true_blinks =  extractPartialAndFullBlinks(true_blinks)
-        print('LEN TRUE', len(partial_true_blinks), len(complete_true_blinks))
-        self.targets = self.dataframe[self.y_col]
-        self.classes = np.unique(self.dataframe[self.y_col])
+        target = selectedRow[self.y_col]
 
-    def __len__(self):
-        return len(self.dataframe) 
-
-    def getDataframeRow(self, idx):
-        return self.dataframe.iloc[idx]
-
-    def getDataframe(self):
-        return self.dataframe
-    
-    def __getitem__(self, idx):
-        selectedRow = self.dataframe.iloc[idx]
-        sample = Image.open(selectedRow['complete_path'])
-        if self.partial_blinks:
-            target = selectedRow['blink_type']
-        else:
-            target = (selectedRow[self.y_col].astype(int) >= 0).astype(int)
         if self.transform is not None:
             sample = self.transform(sample)
 
         return sample, target
-
 
 
 class SiameseDataset(Dataset):
@@ -197,7 +146,6 @@ class BalancedBatchSampler(BatchSampler):
         self.batch_size = self.n_classes * self.n_samples
 
         self.target_to_idxs = {target: np.where(np.array(self.targets) == target)[0] for target in self.classes}
-        #np.random.seed(42)
     
     def __iter__(self):
         count = 0

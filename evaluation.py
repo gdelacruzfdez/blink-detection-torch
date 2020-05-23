@@ -108,6 +108,7 @@ def extractBlinks(dataframe):
         right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertAnnotationToBlinks(right)))
         pred_left_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertPredictionsToBlinks(left)))
         pred_right_blinks = mergeDoubleBlinks(deleteNonVisibleBlinks(convertPredictionsToBlinks(right)))
+
     
         fp_left, fn_left, db_left, tp_left = calculateConfussionMatrix(pred_left_blinks, left_blinks)
         fp_right, fn_right, db_right, tp_right = calculateConfussionMatrix(pred_right_blinks, right_blinks)
@@ -122,6 +123,8 @@ def extractBlinks(dataframe):
         all_right_blinks.extend(right_blinks)
         all_pred_left_blinks.extend(pred_left_blinks)
         all_pred_right_blinks.extend(pred_right_blinks)
+
+    print('TOTAL BLINKS:', len(all_left_blinks), len(all_right_blinks))
 
     return calculateStatistics(fp, fn, db, tp)
 
@@ -208,12 +211,12 @@ def convertPredictionsToBlinks(annotations):
     i=0
     blinks = []
     while i < len(annotations):
-        if(annotations.loc[i]['blink_id_pred'] > 0):
+        if(annotations.loc[i]['pred'] > 0):
             fullyClosed = False
             notVisible = False
             start = annotations.loc[i]['frameId']
-            while i< len(annotations) and annotations.loc[i]['blink_id_pred'] > 0:
-                if annotations.loc[i]['blink_id_pred'] == EYE_CLOSED:
+            while i< len(annotations) and annotations.loc[i]['pred'] > 0:
+                if annotations.loc[i]['pred'] == EYE_CLOSED:
                     fullyClosed = True
                 if annotations.loc[i]['NV'] == 1:
                     notVisible= True
