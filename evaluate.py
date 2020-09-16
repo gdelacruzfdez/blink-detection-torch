@@ -13,7 +13,7 @@ from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from dataloader import SiameseDataset, LSTMDataset, BLINK_DETECTION_MODE, BLINK_COMPLETENESS_MODE, EYE_STATE_DETECTION_MODE
 from network import EmbeddingNet, SiameseNetV2, BiRNN
-from evaluation import evaluate
+from evaluation import evaluate, evaluatePartialBlinks
 
 DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize2'
 
@@ -100,11 +100,25 @@ def test(test_loader, model, cnn_model, cuda, args):
     dataframe = test_loader.dataset.getDataframe().copy()
     predictions = predictions[:len(dataframe)]
     dataframe['pred'] = predictions
-    return evaluate(dataframe)
-
+    if BLINK_DETECTION_MODE == args.evaluation_mode:
+    	return evaluate(dataframe)
+    elif BLINK_COMPLETENESS_MODE == args.evaluation_mode:
+        dataframe.to_csv('eyeblink8.csv')
+        return evaluatePartialBlinks(dataframe)
+    else:
+        leftEyes = dataframe[dataframe['eye'] == 'LEFT']
+        rightEyes = dataframe[dataframe['eye'] == 'RIGHT']
+        blinksPerFrames = dataframe.groupby(['frameId', 'video']).max().reset_index()
+        #print(metrics.classification_report(dataframe['blink'], predictions, target_names=['Open', 'Closed']))
+        #print(metrics.confusion_matrix(dataframe['blink'], predictions))
+        print(metrics.classification_report(blinksPerFrames['blink'], blinksPerFrames['pred'], target_names=['Open', 'Closed']))
+        print(metrics.confusion_matrix(blinksPerFrames['blink'], blinksPerFrames['pred']))
+        print(metrics.precision_recall_fscore_support(blinksPerFrames['blink'], blinksPerFrames['pred'], average='binary'))
+        return f1, precision, recall, FP, FN, TP
 
 def main():
     args = parse_args()
+    print(args)
     cuda = torch.cuda.is_available()
     if cuda:
         print('Device: {}'.format(torch.cuda.get_device_name(0)))
@@ -120,7 +134,7 @@ def main():
     cnn_model = SiameseNetV2(args.dims)
     cnn_model.load_state_dict(torch.load(args.cnn_model))
     cnn_model.eval()
-    lstm_model = BiRNN(args.dims, args.lstm_hidden_units, args.lstm_layers,2)
+    lstm_model = BiRNN(args.dims, args.lstm_hidden_units, args.lstm_layers, num_classes)
     lstm_model.load_state_dict(torch.load(args.lstm_model))
     lstm_model.eval()
     if cuda:
@@ -141,7 +155,18 @@ def main():
     dataset = LSTMDataset(dataset_dirs, test_transform, mode= args.evaluation_mode)    
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    f1, precision, recall, fp, fn, tp, db= test(loader, lstm_model, cnn_model, cuda, args)
-    print('F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {} | Total Blinks: {}'.format(f1, precision, recall, tp, fp, fn, db))
+    if BLINK_DETECTION_MODE == args.evaluation_mode:
+        f1, precision, recall, fp, fn, tp, db = test(loader, lstm_model, cnn_model, cuda, args)
+        print('F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {} | Total Blinks: {}'.format(f1, precision, recall, tp, fp, fn, db))
+    elif BLINK_COMPLETENESS_MODE == args.evaluation_mode:
+        partial, complete = test(loader, lstm_model, cnn_model, cuda, args)
+        f1_partial, precision_partial, recall_partial, fp_partial, fn_partial, tp_partial, db_partial = partial
+        f1_complete, precision_complete, recall_complete, fp_complete, fn_complete, tp_complete, db_complete= complete
+        print('F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {} | Predicted Blinks: {}'.format(f1_partial, precision_partial, recall_partial, tp_partial, fp_partial, fn_partial, db_partial))
+        print('F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {} | Predicted Blinks: {}'.format(f1_complete, precision_complete, recall_complete, tp_complete, fp_complete, fn_complete, db_complete))
+    else:
+        f1, precision, recall, fp, fn, tp = test(loader, lstm_model, cnn_model, cuda, args)
+        print('F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(f1, precision, recall, tp, fp, fn))
+
 if __name__ == '__main__':
     main()

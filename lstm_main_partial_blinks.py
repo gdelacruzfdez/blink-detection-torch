@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 from PIL import Image
 from sklearn import metrics
+from sklearn.utils.class_weight import compute_class_weight
 from tqdm import tqdm
 
 import torch
@@ -19,7 +20,7 @@ from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler,BLINK_C
 from network import EmbeddingNet, SiameseNetV2, BiRNN, LSTM
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform, LSTMImgAugTransform
-from evaluation import  extractPartialCompleteBlinks,evaluatePartialBlinks
+from evaluation import  extractPartialCompleteBlinks,evaluatePartialBlinks, evaluate
 
 DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize2'
 
@@ -32,7 +33,7 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=500)
     parser.add_argument('--dims', type=int, default=256)
     parser.add_argument('--lstm_layers', type=int, default=2)
-    parser.add_argument('--lstm_hidden_units', type=int, default=512)
+    parser.add_argument('--lstm_hidden_units', type=int, default=128)
     parser.add_argument('--cnn_model', type=str)
     parser.add_argument('--model_file', type=str)
     parser.add_argument('--sequence_len', type=int, default=100)
@@ -42,20 +43,23 @@ def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, sched
     bestf1 = 0
     currentf1 = 0
     for epoch in range(1, n_epochs + 1):
-        if scheduler.num_bad_epochs == scheduler.patience and bestf1!=currentf1:
-            print('Reducing learning rate and restoring best weights to F1: ' + str(bestf1))
-            model.load_state_dict(torch.load(args.model_file))
+        #if scheduler.num_bad_epochs == scheduler.patience and bestf1!=currentf1:
+        #    print('Reducing learning rate and restoring best weights to F1: ' + str(bestf1))
+        #    model.load_state_dict(torch.load(args.model_file))
         scheduler.step(currentf1)
 
         train_loss, train_accuracy= train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args)
         print('Epoch: {}/{}, Average train loss: {:.4f}, Average train accuracy: {:.4f}'.format(epoch, n_epochs, train_loss, train_accuracy))
 
         if test_loader is not None:
-            partial, complete= test_epoch(test_loader, model, cnn_model, criterion, cuda, args)
+            partial, complete = test_epoch(test_loader, model, cnn_model, criterion, cuda, args)
+            #partial, complete= completeTask
             f1_partial, precision_partial, recall_partial, fp_partial, fn_partial, tp_partial, db_partial = partial
             f1_complete, precision_complete, recall_complete, fp_complete, fn_complete, tp_complete, db_complete= complete
+            #f1, precision, recall, fp, fn, tp, db= simpleTask
             print('PARTIAL Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {} | Predicted Blinks: {}'.format(epoch, n_epochs, f1_partial, precision_partial, recall_partial, tp_partial, fp_partial, fn_partial, db_partial))
             print('COMPLETE Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {} | Predicted Blinks: {}'.format(epoch, n_epochs, f1_complete, precision_complete, recall_complete, tp_complete, fp_complete, fn_complete, db_complete))
+            #print('SIMPLE TASK Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(epoch, n_epochs, f1, precision, recall, tp, fp, fn))
             currentf1 = (f1_partial + f1_complete) / 2
             if currentf1 > bestf1:
                 print('Best model! New AVG F1:{:.4f}, Old AVG F1:{:.4f} | New F1 Partial:{:.4f} | Complete: {:.4f}'.format(currentf1, bestf1, f1_partial,f1_complete))
@@ -121,6 +125,11 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
         losses.append(loss.item())
         targets = targets.data.cpu()
         _, predicted = torch.max(outputs.data, 1)
+        #ones = torch.ones(predicted.size()).long().cuda()
+        #zeros = torch.zeros(predicted.size()).long().cuda()
+        #final = torch.where((predicted == 1) & (outputs.data[:, 1] < 0.9), zeros, predicted)
+        #final = torch.where((final == 2) & (outputs.data[:, 2] < 1), ones, final)
+
         predicted = predicted.data.cpu()
         perf = perf_measure(targets, predicted)
 
@@ -174,6 +183,10 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
             losses.append(loss.item())
             targets = targets.data.cpu()
             _, predicted = torch.max(outputs.data, 1)
+            #ones = torch.ones(predicted.size()).long().cuda()
+            #zeros = torch.zeros(predicted.size()).long().cuda()
+            #final = torch.where((predicted == 1) & (outputs.data[:, 1] < 0.9), zeros, predicted)
+            #final = torch.where((predicted == 2) & (outputs.data[:, 2] < 0.9), ones, predicted)
             predicted = predicted.data.cpu()
             predictions = np.concatenate((predictions, predicted))
             alltargets = np.concatenate((alltargets, targets))
@@ -193,9 +206,13 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
             progress.set_description('Test Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
             #progress.set_description('Test: {} | Accuracy: {} | F1: {}'.format(loss.item(), accuracy, f1))
     dataframe = test_loader.dataset.getDataframe().copy()
+    confussion_matrix = metrics.confusion_matrix(alltargets, predictions)
+    classification_report = metrics.classification_report(alltargets, predictions, target_names=['Open', 'Part', 'Closed'])
     predictions = predictions[:len(dataframe)]
     dataframe['pred'] = predictions
-    return evaluatePartialBlinks(dataframe)
+    print(confussion_matrix )
+    print(classification_report)
+    return evaluatePartialBlinks(dataframe)#, evaluate(dataframe)
 
 def main():
     args = parse_args()
@@ -234,6 +251,8 @@ def main():
     train_set = LSTMDataset(dataset_dirs, train_transform, mode = BLINK_COMPLETENESS_MODE )
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
     print('DATASET LENGTH', len(train_loader.dataset.getDataframe()))
+    weights = compute_class_weight('balanced',np.unique(train_loader.dataset.targets),train_loader.dataset.targets)
+    print('WEIGHTS', weights)
 
     test_dataset_dirs = args.test_dataset_dirs.split(',')
     test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
@@ -241,6 +260,7 @@ def main():
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
     print('TEST LENGTH', len(test_loader.dataset.getDataframe()))
 
+    class_weights = torch.FloatTensor(weights).cuda()
     criterion = CrossEntropyLoss()
 
     optimizer = Adam(lstm_model.parameters(), lr=1e-4)

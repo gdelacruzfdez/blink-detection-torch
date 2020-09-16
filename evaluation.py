@@ -23,6 +23,8 @@ def extractPartialCompleteBlinks(dataframe):
 
     allPartialLeftBlinks = []
     allPartialRightBlinks = []
+    predictedPartialLeftBlinks = []
+    predictedPartialRightBlinks = []
     allCompleteLeftBlinks = []
     allCompleteRightBlinks = []
 
@@ -59,6 +61,8 @@ def extractPartialCompleteBlinks(dataframe):
         
         allPartialLeftBlinks.extend(partial_left_blinks)
         allPartialRightBlinks.extend(partial_right_blinks)
+        predictedPartialLeftBlinks.extend(pred_partial_left_blinks)
+        predictedPartialRightBlinks.extend(pred_partial_right_blinks)
         allCompleteLeftBlinks.extend(complete_left_blinks)
         allCompleteRightBlinks.extend(complete_right_blinks)
 
@@ -100,6 +104,7 @@ def extractBlinks(dataframe):
     fp = 0
     tp = 0
 
+
     for i in range(1,numVideos+1):
         left = leftFrames[leftFrames['video']==i].reset_index()
         right = rightFrames[rightFrames['video']==i].reset_index()
@@ -124,8 +129,7 @@ def extractBlinks(dataframe):
         all_pred_left_blinks.extend(pred_left_blinks)
         all_pred_right_blinks.extend(pred_right_blinks)
 
-    print('TOTAL BLINKS:', len(all_left_blinks), len(all_right_blinks))
-
+    print('TOTAL BLINKS:', len(all_left_blinks), len(all_right_blinks), len(all_pred_left_blinks), len(all_pred_right_blinks))
     return calculateStatistics(fp, fn, db, tp)
 
 def extractBlinksFromPredictions(dataframe):
@@ -166,7 +170,7 @@ def realBlinks(annotations):
                 row = annotations.loc[index]
             index -=1
             end = index
-            blinks.append({'start': start, 'end':end, 'notVisible':notVisible})
+            blinks.append({'start': start, 'end':end, 'notVisible':notVisible, 'video': row['video']})
             blink_id = -1
         index+=1
     return blinks
@@ -202,7 +206,7 @@ def convertAnnotationToBlinks(annotations):
                 i+=1
             i-=1
             end = annotations.loc[i]['frameId']
-            blinks.append({'start': start, 'end':end, 'notVisible':notVisible, 'completeBlink': fullyClosed})
+            blinks.append({'start': start, 'end':end, 'notVisible':notVisible, 'completeBlink': fullyClosed, 'video': annotations.loc[i]['video']})
         i+=1
     return blinks
 
@@ -223,7 +227,7 @@ def convertPredictionsToBlinks(annotations):
                 i+=1
             i-=1
             end = annotations.loc[i]['frameId']
-            blinks.append({'start': start, 'end':end, 'notVisible':notVisible, 'completeBlink': fullyClosed})
+            blinks.append({'start': start, 'end':end, 'notVisible':notVisible, 'completeBlink': fullyClosed, 'video': annotations.loc[i]['video']})
         i+=1
     return blinks
 
@@ -323,7 +327,7 @@ def iou(blink1,blink2):
 def calculateConfussionMatrix(pred_blinks, true_blinks):
     fp = calcFP(pred_blinks,true_blinks)
     fn = calcFP(true_blinks, pred_blinks)
-    db = len(true_blinks)
+    db = len(pred_blinks)
     tp = db - fp
     return fp, fn, db, tp
 

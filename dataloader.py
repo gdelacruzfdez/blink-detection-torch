@@ -18,7 +18,7 @@ EYE_STATE_DETECTION_MODE = 'EYE_STATE_DETECTION_MODE'
 
 class LSTMDataset(Dataset):
 
-    def __init__(self, paths, transform, mode = BLINK_DETECTION_MODE):
+    def __init__(self, paths, transform, mode = BLINK_DETECTION_MODE, videos = None):
         self.x_col = 'complete_path'
         self.y_col = 'target'
         self.transform = transform
@@ -33,6 +33,8 @@ class LSTMDataset(Dataset):
             for idx, row in dataframe.iterrows():
                 completePaths.append(os.path.join(row['base_path'], row['frame']))
             dataframe['complete_path'] = completePaths
+            if videos != None:
+                dataframe = dataframe[dataframe.video.isin(videos)]
             dataframeMaxVideo = dataframe['video'].max()
             dataframe['video'] = dataframe['video'] +  maxNumVideo
             maxNumVideo = dataframeMaxVideo
@@ -78,9 +80,10 @@ class LSTMDataset(Dataset):
 
 class SiameseDataset(Dataset):
 
-    def __init__(self, paths, transform):
+    def __init__(self, paths, transform, videos = None ):
         self.x_col = 'complete_path'
-        self.y_col = 'blink'
+        #self.y_col = 'blink'
+        self.y_col = 'target'
         self.transform = transform
         dataframes = []
         for root in paths:
@@ -92,11 +95,15 @@ class SiameseDataset(Dataset):
             for idx, row in dataframe.iterrows():
                 completePaths.append(os.path.join(row['base_path'], row['frame']))
             dataframe['complete_path'] = completePaths
+            if videos != None:
+                dataframe = dataframe[dataframe.video.isin(videos)]
             dataframes.append(dataframe)
         
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
+        self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
+        print(self.classes)
 
     def __len__(self):
         return len(self.dataframe)

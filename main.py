@@ -15,7 +15,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.nn import CrossEntropyLoss, BCELoss  
 
-from dataloader import SiameseDataset, BalancedBatchSampler, LSTMDataset, EYE_STATE_DETECTION_MODE 
+from dataloader import SiameseDataset, BalancedBatchSampler, LSTMDataset, EYE_STATE_DETECTION_MODE ,  BLINK_COMPLETENESS_MODE 
 from network import EmbeddingNet, SiameseNetV2
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform
@@ -31,6 +31,8 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--dims', type=int, default=256)
     parser.add_argument('--model_file', type=str, default='model.pt')
+    parser.add_argument('--train_videos', type=str)
+    parser.add_argument('--test_videos', type=str)
     return parser.parse_args()
 
 def fit(train_loader, eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, n_epochs,model_file, cuda):
@@ -53,6 +55,8 @@ def fit(train_loader, eval_train_loader, eval_test_loader, model, criterion, opt
                 print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(classification_metrics[2],bestf1))
                 bestf1 = classification_metrics[2]
                 torch.save(model.state_dict(), model_file)
+            if epoch % 10 == 0:
+                torch.save(model.state_dict(), '{}_{}EP.pt'.format(model_file, epoch))
 
 
 def train_epoch(train_loader, model, criterion, optimizer, cuda):
@@ -87,7 +91,8 @@ def test_epoch(train_loader, test_loader, model, criterion, cuda):
     nc = NearestCentroid()
     nc.fit(train_embeddings, train_targets)
     predictions = nc.predict(test_embeddings)
-    classification_report = metrics.classification_report(test_targets, predictions, target_names=['Open', 'Closed'])
+    print(predictions)
+    classification_report = metrics.classification_report(test_targets, predictions, target_names=['Open','Part', 'Closed'])
     classification_metrics = metrics.precision_recall_fscore_support(test_targets, predictions, average='macro')
     confussion_matrix = metrics.confusion_matrix(test_targets, predictions)
     return classification_report, classification_metrics, confussion_matrix
@@ -138,11 +143,14 @@ def main():
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
     ])
+    
+    train_videos = None if not args.train_videos else args.train_videos.split(',')
+    test_videos = None if not args.test_videos else args.test_videos.split(',')
 
     dataset_dirs = args.dataset_dirs.split(',')
     dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs))
-    train_set = SiameseDataset(dataset_dirs, train_transform)    
-    train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=2, n_samples=args.batch_size)
+    train_set = SiameseDataset(dataset_dirs, train_transform, videos = train_videos )    
+    train_batch_sampler = BalancedBatchSampler(train_set.targets, n_classes=3, n_samples=args.batch_size)
     train_loader = DataLoader(train_set, batch_sampler=train_batch_sampler, num_workers=16)
     print('TRAIN DATASET LENGTH', len(train_loader.dataset.getDataframe()))
 
@@ -153,9 +161,9 @@ def main():
     if args.test_dataset_dirs != None:
         test_dataset_dirs = args.test_dataset_dirs.split(',')
         test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
-        eval_train_set = LSTMDataset(dataset_dirs, test_transform, mode = EYE_STATE_DETECTION_MODE )    
+        eval_train_set = LSTMDataset(dataset_dirs, test_transform, mode = BLINK_COMPLETENESS_MODE, videos= train_videos )   
         eval_train_loader = DataLoader(eval_train_set, batch_size=args.batch_size, shuffle=False)
-        eval_test_set = LSTMDataset(test_dataset_dirs, test_transform, mode = EYE_STATE_DETECTION_MODE )    
+        eval_test_set = LSTMDataset(test_dataset_dirs, test_transform, mode =  BLINK_COMPLETENESS_MODE, videos = test_videos )    
         eval_test_loader = DataLoader(eval_test_set, batch_size=args.batch_size, shuffle=False)
         print('TEST DATASET LENGTH', len(eval_test_loader.dataset.getDataframe()))
 
@@ -164,10 +172,8 @@ def main():
         model = model.cuda()
 
     criterion = BCELoss()
-    #optimizer = Adam(model.parameters(), lr=1e-4, weight_decay=1e-3)
-    #scheduler = ReduceLROnPlateau(optimizer, 'max', patience=8)
     optimizer = Adam(model.parameters(), lr=1e-4)
-    scheduler = StepLR(optimizer, 10, gamma=0.1, last_epoch=-1)
+    scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
     fit(train_loader,eval_train_loader, eval_test_loader, model, criterion, optimizer, scheduler, args.epochs, args.model_file, cuda)
     
 

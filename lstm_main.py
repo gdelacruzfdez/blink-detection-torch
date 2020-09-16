@@ -13,7 +13,8 @@ from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
-from torch.nn import BCELoss, CrossEntropyLoss
+from torch.nn import BCELoss, CrossEntropyLoss 
+from sklearn.utils.class_weight import compute_class_weight
 
 from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler, BLINK_DETECTION_MODE
 from network import EmbeddingNet, SiameseNetV2, BiRNN, LSTM
@@ -59,6 +60,8 @@ def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, sched
                 print('')
                 bestf1 = currentf1
                 torch.save(model.state_dict(), args.model_file)
+            if epoch % 10 == 0:
+                torch.save(model.state_dict(), '{}_{}EP.pt'.format(args.model_file, epoch))
 
 def perf_measure(y_actual, y_hat):
     TP = 0
@@ -231,8 +234,15 @@ def main():
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
     
     print('TEST DATASET LENGTH', len(test_loader.dataset.getDataframe()))
-
+    
+    #weights = compute_class_weight('balanced',np.unique(train_loader.dataset.targets),train_loader.dataset.targets)
+    weights = [1, 0.5]
+    print('WEIGHTS', weights)
+    
+    class_weights = torch.FloatTensor(weights).cuda()
     criterion = CrossEntropyLoss()
+    
+    criterion = CrossEntropyLoss(class_weights)
     optimizer = Adam(lstm_model.parameters(), lr=1e-4)
     #scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
     scheduler = ReduceLROnPlateau(optimizer, 'max', patience=8, factor=0.1, verbose=True)

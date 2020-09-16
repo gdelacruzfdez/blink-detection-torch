@@ -20,8 +20,9 @@ from network import EmbeddingNet, SiameseNetV2, BiRNN, LSTM
 from loss import OnlineTripletLoss, ContrastiveLoss
 from augmentator import ImgAugTransform, LSTMImgAugTransform
 from evaluation import evaluate
+from functools import reduce
 
-DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize2'
+DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize2NF'
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -36,15 +37,17 @@ def parse_args():
     parser.add_argument('--cnn_model', type=str)
     parser.add_argument('--model_file', type=str)
     parser.add_argument('--sequence_len', type=int, default=100)
+    parser.add_argument('--train_videos', type=str)
+    parser.add_argument('--test_videos', type=str)
     return parser.parse_args()
 
 def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, scheduler, n_epochs, cuda, args):
     bestf1 = 0
     currentf1 = 0
     for epoch in range(1, n_epochs + 1):
-        if scheduler.num_bad_epochs == scheduler.patience and bestf1!=currentf1:
-            print('Reducing learning rate and restoring best weights to F1: ' + str(bestf1))
-            model.load_state_dict(torch.load(args.model_file))
+        #if scheduler.num_bad_epochs == scheduler.patience and bestf1!=currentf1:
+        #    print('Reducing learning rate and restoring best weights to F1: ' + str(bestf1))
+        #    model.load_state_dict(torch.load(args.model_file))
         scheduler.step(currentf1)
 
         train_loss, train_accuracy= train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args)
@@ -100,7 +103,12 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
         features = cnn_model.get_embedding(samples)
 
         if features.numel() <  args.dims * args.batch_size:
-            continue
+            zeros_features = torch.zeros(args.batch_size - features.shape[0], args.dims)
+            zeros_features = zeros_features.cuda()
+            features = torch.cat((features, zeros_features))
+            zeros_targets = torch.zeros(args.batch_size - targets.shape[0], dtype=torch.long)
+            zeros_targets = zeros_targets.cuda()
+            targets = torch.cat((targets, zeros_targets))
         features = features.reshape(-1, args.sequence_len, args.dims)
         
 
@@ -115,7 +123,10 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
         losses.append(loss.item())
         targets = targets.data.cpu()
         _, predicted = torch.max(outputs.data, 1)
-        predicted = predicted.data.cpu()
+        zeros = torch.zeros(predicted.size()).long().cuda()
+        final = torch.where((predicted == 1) & (outputs.data[:, 1] < 0.8), zeros, predicted)
+        predicted = final.cpu() #predicted.data.cpu()
+        #predicted = predicted.data.cpu()
         perf = perf_measure(targets, predicted)
 
         TN += perf[2]
@@ -143,8 +154,8 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
     FP = 0
     progress = tqdm(enumerate(test_loader), total=len(test_loader), desc='Testing', file=sys.stdout)
     predictions = np.array([])
-
     for batch_idx, data in progress:
+
         samples, targets = data
         if cuda:
             samples = samples.cuda()
@@ -153,7 +164,12 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
         with torch.no_grad():
             features = cnn_model.get_embedding(samples)
             if features.numel() <  args.dims * args.batch_size:
-                continue
+                zeros_features = torch.zeros(args.batch_size - features.shape[0], args.dims)
+                zeros_features = zeros_features.cuda()
+                features = torch.cat((features, zeros_features))
+                zeros_targets = torch.zeros(args.batch_size - targets.shape[0], dtype=torch.long)
+                zeros_targets = zeros_targets.cuda()
+                targets = torch.cat((targets, zeros_targets))
             features = features.reshape(-1, args.sequence_len, args.dims)
             outputs = model(features)
 
@@ -162,7 +178,9 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
             losses.append(loss.item())
             targets = targets.data.cpu()
             _, predicted = torch.max(outputs.data, 1)
-            predicted = predicted.data.cpu()
+            zeros = torch.zeros(predicted.size()).long().cuda()
+            final = torch.where((predicted == 1) & (outputs.data[:, 1] < 0.8), zeros, predicted)
+            predicted = final.cpu() #predicted.data.cpu()
             predictions = np.concatenate((predictions, predicted))
 
             perf = perf_measure(targets, predicted)
@@ -180,10 +198,23 @@ def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
             progress.set_description('Test Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
             #progress.set_description('Test: {} | Accuracy: {} | F1: {}'.format(loss.item(), accuracy, f1))
     dataframe = test_loader.dataset.getDataframe().copy()
-    dataframe = dataframe[:len(predictions)]
-    print(metrics.classification_report(dataframe['blink'], predictions, target_names=['Open', 'Closed']))
-    print(metrics.confusion_matrix(dataframe['blink'], predictions))
-    return f1, precision, recall, FP, FN, TP
+    predictions = predictions[:len(dataframe)]
+    dataframe['pred'] = predictions
+    #print(metrics.classification_report(dataframe['blink'], predictions, target_names=['Open', 'Closed']))
+    #print(metrics.confusion_matrix(dataframe['blink'], predictions))
+    leftEyes = dataframe[dataframe['eye'] == 'LEFT']
+    rightEyes = dataframe[dataframe['eye'] == 'RIGHT']
+    #blinksPerFrames = dataframe[(dataframe['NV'] == 0) & (dataframe['NF'] == 0)].groupby(['frameId', 'video']).max().reset_index()
+    blinksPerFrames = dataframe.groupby(['frameId', 'video'])
+    blinks = blinksPerFrames.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
+    preds = blinksPerFrames.pred.apply(lambda x: max(x.values.tolist()))
+    #print(metrics.classification_report(dataframe['blink'], predictions, target_names=['Open', 'Closed']))
+    #print(metrics.confusion_matrix(dataframe['blink'], predictions))
+    print(metrics.classification_report(blinks, preds, target_names=['Open', 'Closed']))
+    print(metrics.confusion_matrix(blinks, preds))
+    precisionRecallF1 = metrics.precision_recall_fscore_support(blinks, preds, average='binary')
+    print(precisionRecallF1)
+    return precisionRecallF1[2], precisionRecallF1[0], precisionRecallF1[1], FP, FN, TP
     
 
 
@@ -217,16 +248,19 @@ def main():
                                  std=[0.229, 0.224, 0.225])
     ])
 
+    train_videos = None if not args.train_videos else args.train_videos.split(',')
+    test_videos = None if not args.test_videos else args.test_videos.split(',')
+
     dataset_dirs = args.dataset_dirs.split(',')
     dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs))
 
-    train_set = LSTMDataset(dataset_dirs, train_transform, mode=EYE_STATE_DETECTION_MODE)
+    train_set = LSTMDataset(dataset_dirs, train_transform, mode=EYE_STATE_DETECTION_MODE, videos = train_videos)
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
     print('TRAIN DATASET LENGTH', len(train_loader.dataset.getDataframe()))
 
     test_dataset_dirs = args.test_dataset_dirs.split(',')
     test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
-    test_set = LSTMDataset(test_dataset_dirs, test_transform, mode=EYE_STATE_DETECTION_MODE)    
+    test_set = LSTMDataset(test_dataset_dirs, test_transform, mode=EYE_STATE_DETECTION_MODE, videos = test_videos)    
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
     
     print('TEST DATASET LENGTH', len(test_loader.dataset.getDataframe()))
