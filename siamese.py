@@ -4,6 +4,7 @@ import network
 import numpy as np
 import torch
 from PIL import Image
+from skorch import NeuralClassifier
 from functional import seq
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
@@ -14,6 +15,7 @@ from torch.nn import BCELoss
 from sklearn.neighbors import NearestCentroid
 from tqdm import tqdm
 import sklearn.metrics
+from sklearn.model_selection import GridSearchCV
 
 class SiameseModel:
 
@@ -149,3 +151,19 @@ class SiameseModel:
                 print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(classification_metrics[2],bestf1))
                 bestf1 = classification_metrics[2]
                 torch.save(self.model.state_dict(), self.params.get('model_file'))
+    
+    def hyperparameter_tunning(self):
+        net = NeuralClassifier(
+            SiameseModel,
+            max_epochs=2,
+            criterion= BCELoss,
+            optimizer= Adam,
+            iterator_train__shuffle=True)
+        
+        net.set_params(train_split=False, verbose=0)
+        params = {
+            'lr': [0.01, 0.001],
+            'module__dims': [128, 256]
+        }
+        gs = GridSearchCV(net, params, refit=False, cv=3, scoring='f1', verbose=2)
+        gs.fit(self.train_set)

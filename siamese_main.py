@@ -14,7 +14,7 @@ def main():
         print(params)
 
         siamese_model = SiameseModel(params, cuda)
-        siamese_model.fit()
+        siamese_model.hyperparameter_tunning()
 
 
 
