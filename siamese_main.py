@@ -8,9 +8,10 @@ def main():
     if cuda:
         print('Device: {}'.format(torch.cuda.get_device_name(0)))
 
-    json_params_file = sys.argv[0]
+    json_params_file = sys.argv[1]
     with open(json_params_file, "r") as json_file:
         params = json.load(json_file)
+        print(params)
 
         siamese_model = SiameseModel(params, cuda)
         siamese_model.fit()

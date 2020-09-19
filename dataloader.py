@@ -82,8 +82,8 @@ class SiameseDataset(Dataset):
 
     def __init__(self, paths, transform, videos = None ):
         self.x_col = 'complete_path'
-        #self.y_col = 'blink'
-        self.y_col = 'target'
+        self.y_col = 'blink'
+        #self.y_col = 'target'
         self.transform = transform
         dataframes = []
         for root in paths:
@@ -100,7 +100,7 @@ class SiameseDataset(Dataset):
             dataframes.append(dataframe)
         
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
-        self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
+        #self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
         print(self.classes)
