@@ -4,7 +4,7 @@ import network
 import numpy as np
 import torch
 from PIL import Image
-from skorch import NeuralClassifier
+from skorch import NeuralNet
 from functional import seq
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
@@ -16,6 +16,8 @@ from sklearn.neighbors import NearestCentroid
 from tqdm import tqdm
 import sklearn.metrics
 from sklearn.model_selection import GridSearchCV
+from skorch.callbacks import PrintLog, ProgressBar
+from skorch.helper import SliceDataset
 
 class SiameseModel:
 
@@ -54,7 +56,7 @@ class SiameseModel:
     def __initialize_train_loader(self):
         self.train_set = dataloader.SiameseDataset(self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
         self.train_batch_sampler = dataloader.BalancedBatchSampler(self.train_set.targets, n_classes=2, n_samples=self.params.get('batch_size'))
-        self.train_loader = DataLoader(self.train_set, batch_sampler = self.train_batch_sampler, num_workers=32)
+        self.train_loader = DataLoader(self.train_set, batch_sampler = self.train_batch_sampler, num_workers=4)#, num_workers=8, pin_memory=False)
 
     def __initialize_evaluation_loader(self):
        self.eval_train_set = dataloader.LSTMDataset(self.train_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.EYE_STATE_DETECTION_MODE, videos=self.train_videos)
@@ -77,15 +79,16 @@ class SiameseModel:
         losses = []
         progress = tqdm(enumerate(self.train_loader), total=len(self.train_loader), desc='Training', file=sys.stdout)
         for batch_idx, data in progress:
-            samples1, samples2, targets = data
+            samples, targets = data
+            samples1, samples2 = samples
             if self.cuda:
                 samples1 = samples1.cuda()
                 samples2 = samples2.cuda()
                 targets = targets.cuda()
             
             self.optimizer.zero_grad()
-            outputs = self.model(samples1, samples2)
-            outputs = outputs.squeeze(1)
+            outputs = self.model((samples1, samples2))
+            #outputs = outputs.squeeze(1)
             loss = self.criterion(outputs, targets.float())
             loss.backward()
             self.optimizer.step()
@@ -153,17 +156,26 @@ class SiameseModel:
                 torch.save(self.model.state_dict(), self.params.get('model_file'))
     
     def hyperparameter_tunning(self):
-        net = NeuralClassifier(
-            SiameseModel,
+        net = NeuralNet(
+            network.SiameseNetV2,
             max_epochs=2,
+            batch_size=128,
             criterion= BCELoss,
             optimizer= Adam,
-            iterator_train__shuffle=True)
+            iterator_train__num_workers=4,
+            iterator_train__pin_memory=False,
+            iterator_valid__num_workers=4,
+            verbose=2,
+            device='cuda',
+            iterator_train__shuffle=True,
+            callbacks=[PrintLog(), ProgressBar()])
         
-        net.set_params(train_split=False, verbose=0)
+        net.set_params(train_split=False)
         params = {
             'lr': [0.01, 0.001],
-            'module__dims': [128, 256]
+            'module__num_dims': [128, 256]
         }
-        gs = GridSearchCV(net, params, refit=False, cv=3, scoring='f1', verbose=2)
-        gs.fit(self.train_set)
+        gs = GridSearchCV(net, params, refit=False, cv=3, scoring='f1')
+        X_sl = SliceDataset(self.train_set, idx=0)
+        Y_sl = SliceDataset(self.train_set, idx=1)
+        gs.fit(X_sl, Y_sl)

@@ -30,12 +30,13 @@ class SiameseNetV2(nn.Module):
         self.fc = nn.Linear(num_dims, 1)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, x1, x2):
+    def forward(self, x):
+        x1, x2 = x
         output1, output2 = self.pool.map(self.get_embedding, [x1, x2])
         l1_distance = torch.abs(output1 - output2)
         out = self.fc(l1_distance)
         y_prob = self.sigmoid(out)
-        return y_prob
+        return y_prob.reshape(-1)
 
     def get_embedding(self, x):
         return self.embedding_net(x)

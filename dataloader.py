@@ -139,7 +139,7 @@ class SiameseDataset(Dataset):
             sample1 = self.transform(sample1)
             sample2 = self.transform(sample2)
 
-        return sample1, sample2, target
+        return (sample1, sample2), np.array(target, dtype=np.float32)
 
 
 class BalancedBatchSampler(BatchSampler):
