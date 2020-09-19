@@ -1,0 +1,9 @@
+{
+    "datasets_base_path": "",
+    "train_dataset_dirs": [],
+    "test_dataset_dirs": [],
+    "batch_size": 32,
+    "dims": 256,
+    "epochs": 20,
+    "lr": 0.01
+}

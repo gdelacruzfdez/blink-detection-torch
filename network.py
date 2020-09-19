@@ -2,7 +2,6 @@ from torch import nn
 from torchvision import models
 import multiprocessing.dummy as mp
 import torch
-from pytorchcv.model_provider import get_model as ptcv_get_model
 from torch.autograd import Variable
 
 
