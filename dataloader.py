@@ -103,7 +103,6 @@ class SiameseDataset(Dataset):
         #self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
-        print(self.classes)
 
     def __len__(self):
         return len(self.dataframe)
