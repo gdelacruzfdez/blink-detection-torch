@@ -158,24 +158,26 @@ class SiameseModel:
     def hyperparameter_tunning(self):
         net = NeuralNet(
             network.SiameseNetV2,
-            max_epochs=2,
-            batch_size=128,
+            max_epochs=1,
+            batch_size=64,
             criterion= BCELoss,
             optimizer= Adam,
-            iterator_train__num_workers=4,
-            iterator_train__pin_memory=False,
+            optimizer__lr=[0.01,0.001],
+            module__num_dims=[128,256],
+            iterator_train__num_workers=16,
             iterator_valid__num_workers=4,
             verbose=2,
             device='cuda',
             iterator_train__shuffle=True,
             callbacks=[PrintLog(), ProgressBar()])
         
-        net.set_params(train_split=False)
+        #net.set_params(train_split=False)
         params = {
-            'lr': [0.01, 0.001],
-            'module__num_dims': [128, 256]
+            'optimizer_lr': [0.01, 0.001, 0.0001],
+            'module__num_dims': [128, 256, 512]
         }
-        gs = GridSearchCV(net, params, refit=False, cv=3, scoring='f1')
-        X_sl = SliceDataset(self.train_set, idx=0)
-        Y_sl = SliceDataset(self.train_set, idx=1)
-        gs.fit(X_sl, Y_sl)
+        #gs = GridSearchCV(net, params, refit=False)
+        #X_sl = SliceDataset(self.train_set, idx=0)
+        #Y_sl = SliceDataset(self.train_set, idx=1)
+        #gs.fit(X_sl, Y_sl)
+        net.fit(self.train_set)
