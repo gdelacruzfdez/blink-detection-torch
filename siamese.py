@@ -58,9 +58,10 @@ class SiameseModel:
         self.__initialize_training_parameters()
 
     def __initialize_log_file(self):
+        separator = '-'
         self.base_file_name = "CNN_train[{}]_test[{}]_batch_[{}]_dims[{}]_lr[{}]_epochs[{}]"\
-            .format(self.params.get('train_dataset_dirs').join('-'),
-                    self.params.get('test_dataset_dirs').join('-'),
+            .format(separator.join(self.params.get('train_dataset_dirs')),
+                    separator.join(self.params.get('test_dataset_dirs')),
                     self.params.get('batch_size'),
                     self.params.get('dims'),
                     self.params.get('lr'),
@@ -68,7 +69,7 @@ class SiameseModel:
 
         self.log_file = open(self.base_file_name + '.log', 'w')
         self.log_file.write(self.base_file_name + '\n\n')
-        self.log_file.write('')
+        self.log_file.write(self.LOG_FILE_HEADER)
     
     def __initialize_train_loader(self):
         self.train_set = dataloader.SiameseDataset(self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
