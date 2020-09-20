@@ -72,7 +72,7 @@ class SiameseModel:
         self.log_file.write(self.LOG_FILE_HEADER)
     
     def __initialize_train_loader(self):
-        self.train_set = dataloader.SiameseDataset(self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
+        self.train_set = dataloader.SiameseCUDADataset(self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
         self.train_batch_sampler = dataloader.BalancedBatchSampler(self.train_set.targets, n_classes=2, n_samples=self.params.get('batch_size'))
         self.train_loader = DataLoader(self.train_set, batch_sampler = self.train_batch_sampler, num_workers=8)
 
