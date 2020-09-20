@@ -1,7 +1,13 @@
 import sys
 import json
 import torch
+import argparse
 from siamese import SiameseModel
+from sklearn.model_selection import ParameterGrid
+
+HYPERPARAM_MODE = 'HYPERPARAM_MODE'
+TRAINING_MODE = 'TRAINING_MODE'
+
 
 def main():
     cuda = torch.cuda.is_available()
@@ -13,9 +19,15 @@ def main():
         params = json.load(json_file)
         print(params)
 
-        siamese_model = SiameseModel(params, cuda)
-        #siamese_model.hyperparameter_tunning()
-        siamese_model.fit()
+        if HYPERPARAM_MODE == params['mode']:
+            param_grid = ParameterGrid(params)
+            for search_params in param_grid:
+                print('Fitting model with params:',search_params)
+                siamese_model = SiameseModel(search_params, cuda)
+                siamese_model.fit()
+        else:
+            siamese_model = SiameseModel(params, cuda)
+            siamese_model.fit()
 
 
 

@@ -1,10 +1,10 @@
 {
+    "mode": "HYPERPARAM_TUNNING",
     "datasets_base_path": "/mnt/hdd/gcruz/eyesOriginalSize",
     "train_dataset_dirs": ["RN15Train","RN30Train"],
     "test_dataset_dirs": ["RN15Val","RN30Val"],
-    "batch_size": 64,
-    "dims": 256,
-    "epochs": 20,
-    "lr": 0.01 ,
-    "model_file": "test_model.pt"
+    "batch_size": [32,64,128],
+    "dims": [128,256,512],
+    "epochs": 2,
+    "lr": [0.1, 0.01, 0.001, 0.0001]
 }

@@ -36,6 +36,7 @@ class SiameseModel:
                                  std=[0.229, 0.224, 0.225])
     ])
 
+    LOG_FILE_HEADER = 'EPOCH,TRAIN_LOSS,PRECISION,RECALL,SUPPORT,F1'
 
     def __init__(self, params, cuda):
         self.params = params
@@ -46,23 +47,39 @@ class SiameseModel:
             .map(lambda x: "{}/{}".format(self.params.get('datasets_base_path'), x))
         self.test_dataset_dirs = seq(params.get('test_dataset_dirs'))\
             .map(lambda x: "{}/{}".format(self.params.get('datasets_base_path'), x))
+        self.best_f1 = -1
+        self.best_epoch = -1
+        self.current_f1 = -1
 
+        self.__initialize_log_file()
         self.__initialize_train_loader()
         self.__initialize_evaluation_loader()
         self.__initialize_model()
         self.__initialize_training_parameters()
 
+    def __initialize_log_file(self):
+        self.base_file_name = "CNN_train[{}]_test[{}]_batch_[{}]_dims[{}]_lr[{}]_epochs[{}]"\
+            .format(self.params.get('train_dataset_dirs').join('-'),
+                    self.params.get('test_dataset_dirs').join('-'),
+                    self.params.get('batch_size'),
+                    self.params.get('dims'),
+                    self.params.get('lr'),
+                    self.params.get('epochs'))
+
+        self.log_file = open(self.base_file_name + '.log', 'w')
+        self.log_file.write(self.base_file_name + '\n\n')
+        self.log_file.write('')
     
     def __initialize_train_loader(self):
         self.train_set = dataloader.SiameseDataset(self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
         self.train_batch_sampler = dataloader.BalancedBatchSampler(self.train_set.targets, n_classes=2, n_samples=self.params.get('batch_size'))
-        self.train_loader = DataLoader(self.train_set, batch_sampler = self.train_batch_sampler, num_workers=4)#, num_workers=8, pin_memory=False)
+        self.train_loader = DataLoader(self.train_set, batch_sampler = self.train_batch_sampler, num_workers=8)
 
     def __initialize_evaluation_loader(self):
        self.eval_train_set = dataloader.LSTMDataset(self.train_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.EYE_STATE_DETECTION_MODE, videos=self.train_videos)
-       self.eval_train_loader = DataLoader(self.eval_train_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=16)
+       self.eval_train_loader = DataLoader(self.eval_train_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=8)
        self.eval_test_set = dataloader.LSTMDataset(self.test_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.EYE_STATE_DETECTION_MODE, videos=self.test_videos)
-       self.eval_test_loader = DataLoader(self.eval_test_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=16)
+       self.eval_test_loader = DataLoader(self.eval_test_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=8)
 
     def __initialize_model(self):
         self.model = network.SiameseNetV2(self.params.get('dims'))
@@ -135,8 +152,6 @@ class SiameseModel:
 
 
     def fit(self):
-        bestf1 = 0
-        currentf1 = 0
         epochs = self.params.get('epochs')
         for epoch in range(1,epochs + 1):
             self.scheduler.step()
@@ -149,11 +164,19 @@ class SiameseModel:
             print(classification_metrics)
             print(confussion_matrix)
 
-            currentf1 = classification_metrics[2]
-            if classification_metrics[2] > bestf1:
-                print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(classification_metrics[2],bestf1))
-                bestf1 = classification_metrics[2]
-                torch.save(self.model.state_dict(), self.params.get('model_file'))
+            self.log_file.write('{},{},{},{},{},{}\n'\
+                .format(epoch,
+                        train_loss,
+                        classification_metrics[0],
+                        classification_metrics[1],
+                        classification_metrics[3],
+                        classification_metrics[2]))
+
+            self.currentf1 = classification_metrics[2]
+            if self.current_f1 > self.best_f1:
+                self.best_f1 = self.current_f1
+                self.best_epoch = epoch
+                torch.save(self.model.state_dict(), self.base_file_name + '.pt')
     
     def hyperparameter_tunning(self):
         net = NeuralNet(
