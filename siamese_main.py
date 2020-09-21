@@ -24,7 +24,9 @@ def main():
             hyperparam_log_file.write('batch_size,dims,lr,best_epoch,best_f1,last_f1\n')
             best_model_params = None
             best_model_f1 = -1
-            param_grid = ParameterGrid(params)
+            base_params = params.copy()
+            del base_params['mode']
+            param_grid = ParameterGrid(base_params)
             for search_params in param_grid:
                 print('Fitting model with params:',search_params)
                 siamese_model = SiameseModel(search_params, cuda)

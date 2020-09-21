@@ -36,7 +36,7 @@ class SiameseModel:
                                  std=[0.229, 0.224, 0.225])
     ])
 
-    LOG_FILE_HEADER = 'EPOCH,TRAIN_LOSS,PRECISION,RECALL,SUPPORT,F1'
+    LOG_FILE_HEADER = 'EPOCH,TRAIN_LOSS,PRECISION,RECALL,SUPPORT,F1\n'
 
     def __init__(self, params, cuda):
         self.params = params
@@ -72,15 +72,15 @@ class SiameseModel:
         self.log_file.write(self.LOG_FILE_HEADER)
     
     def __initialize_train_loader(self):
-        self.train_set = dataloader.SiameseCUDADataset(self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
+        self.train_set = dataloader.SiameseDataset(self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
         self.train_batch_sampler = dataloader.BalancedBatchSampler(self.train_set.targets, n_classes=2, n_samples=self.params.get('batch_size'))
         self.train_loader = DataLoader(self.train_set, batch_sampler = self.train_batch_sampler, num_workers=8)
 
     def __initialize_evaluation_loader(self):
        self.eval_train_set = dataloader.LSTMDataset(self.train_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.EYE_STATE_DETECTION_MODE, videos=self.train_videos)
-       self.eval_train_loader = DataLoader(self.eval_train_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=8)
+       self.eval_train_loader = DataLoader(self.eval_train_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=4)
        self.eval_test_set = dataloader.LSTMDataset(self.test_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.EYE_STATE_DETECTION_MODE, videos=self.test_videos)
-       self.eval_test_loader = DataLoader(self.eval_test_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=8)
+       self.eval_test_loader = DataLoader(self.eval_test_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=4)
 
     def __initialize_model(self):
         self.model = network.SiameseNetV2(self.params.get('dims'))
@@ -173,7 +173,7 @@ class SiameseModel:
                         classification_metrics[3],
                         classification_metrics[2]))
 
-            self.currentf1 = classification_metrics[2]
+            self.current_f1 = classification_metrics[2]
             if self.current_f1 > self.best_f1:
                 self.best_f1 = self.current_f1
                 self.best_epoch = epoch

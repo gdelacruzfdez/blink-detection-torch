@@ -102,7 +102,7 @@ class SiameseCUDADataset(Dataset):
         #self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
-        self.samples = map(self.__load_img_in_cuda,self.dataframe['complete_path'])
+        self.samples = list(map(self.__load_img_in_cuda,self.dataframe['complete_path']))
 
     def __load_img_in_cuda(self, image_file):
         image = Image.open(image_file)
@@ -216,7 +216,7 @@ class BalancedBatchSampler(BatchSampler):
         self.classes = list(set(self.targets))
         self.n_classes = n_classes
         self.n_samples = n_samples
-        self.n_dataset = len(self.targets)
+        self.n_dataset = len(self.targets) 
         self.batch_size = self.n_classes * self.n_samples
 
         self.target_to_idxs = {target: np.where(np.array(self.targets) == target)[0] for target in self.classes}

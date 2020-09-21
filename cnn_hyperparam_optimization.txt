@@ -1,0 +1,1 @@
+batch_size,dims,lr,best_epoch,best_f1,last_f1

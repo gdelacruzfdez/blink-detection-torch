@@ -3,8 +3,8 @@
     "datasets_base_path": ["/mnt/hdd/gcruz/eyesOriginalSize"],
     "train_dataset_dirs": [["RN15Train","RN30Train"]],
     "test_dataset_dirs": [["RN15Val","RN30Val"]],
-    "batch_size": [32,64,128],
-    "dims": [64,128,256,512],
-    "epochs": [10],
-    "lr": [0.001, 0.0001, 0.00001, 0.000001]
+    "batch_size": [32],
+    "dims": [128],
+    "epochs": [2],
+    "lr": [0.0001, 0.01]
 }
