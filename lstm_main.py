@@ -90,7 +90,6 @@ def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args
     FN = 0
     TP = 0
     FP = 0
-    previousFeatures = [np.zeros(()) for i in range(5)]
     progress = tqdm(enumerate(train_loader), total=len(train_loader), desc='Training', file=sys.stdout)
     for batch_idx, data in progress:
         samples, targets = data
