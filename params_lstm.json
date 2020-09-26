@@ -1,6 +1,7 @@
 {
     "mode": "HYPERPARAM_MODE",
     "datasets_base_path": ["/mnt/hdd/gcruz/eyesOriginalSize2"],
+    "cnn_model_file": ["/home/gcruz/blink-detection/blink-detection-torch/CNN_Hyperparam/cnn_model.pt"],
     "train_dataset_dirs": [["RN15Train","RN30Train"]],
     "test_dataset_dirs": [["RN15Val","RN30Val"]],
     "batch_size": [32,64,128],
