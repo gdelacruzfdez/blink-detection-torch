@@ -82,11 +82,11 @@ class LSTMModel:
         self.train_loader =  DataLoader(self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
     def __initialize_evaluation_loader(self):
-        self.test_set =  dataloader.LSTMDataset(self.test_dataset_dirs, self.TEST_TRANSFORM, mode = dataset.BLINK_DETECTION_MODE)
+        self.test_set =  dataloader.LSTMDataset(self.test_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.BLINK_DETECTION_MODE)
         self.test_loader =  DataLoader(self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
     def __initialize_cnn_model(self):
-        self.cnn_model = networks.SiameseNetV2(self.dims)
+        self.cnn_model = network.SiameseNetV2(self.dims)
         self.cnn_model.load_state_dict(torch.load(self.cnn_model_file))
         self.cnn_model.eval()
         if self.cuda:
@@ -94,7 +94,7 @@ class LSTMModel:
 
 
     def __initialize_lstm_model(self):
-        self.lstm_model = networks.BiRNN(self.dims, self.lstm_hidden_units, self.lstm_layers 2)
+        self.lstm_model = network.BiRNN(self.dims, self.lstm_hidden_units, self.lstm_layers, 2)
         if self.cuda:
             self.lstm_model = self.lstm_model.cuda()
 
@@ -104,7 +104,7 @@ class LSTMModel:
         self.scheduler =  ReduceLROnPlateau(self.optimizer, 'max', patience=8, factor=0.1, verbose=True)
 
     def __perf_measure(self, y_actual, y_hat):
-        TP, FP, TN, FN = 0
+        TP = FP = TN = FN = 0
         for i in range(len(y_hat)): 
             if y_actual[i]==y_hat[i]==1:
                TP += 1
@@ -121,7 +121,7 @@ class LSTMModel:
         self.lstm_model.train()
         losses = []
         accuracies = []
-        TN, FN, TP, FP = 0
+        TN = FN = TP = FP = 0
         progress = tqdm(enumerate(self.train_loader), total=len(self.train_loader), desc='Training', file=sys.stdout)
         for batch_idx, data in progress:
             samples, targets = data
@@ -138,9 +138,9 @@ class LSTMModel:
             outputs = self.lstm_model(features)
             
             loss = self.criterion(outputs, targets)
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            self.optimizer.step()
             
             losses.append(loss.item())
             targets = targets.data.cpu()
@@ -159,12 +159,12 @@ class LSTMModel:
             accuracies.append(acc)
             progress.set_description('Training Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
 
-        return np.mean(losses), np.mean(accuracies)
+        return np.mean(losses), np.mean(accuracies), precision, recall, f1
 
     def __test_epoch(self):
         losses = []
         accuracies = []
-        TN, FN, TP, FP = 0
+        TN = FN = TP = FP = 0
         progress = tqdm(enumerate(self.test_loader), total=len(self.test_loader), desc='Testing', file=sys.stdout)
         predictions = np.array([])
 
@@ -188,9 +188,9 @@ class LSTMModel:
                     targets = torch.cat((targets, zeros_targets))
 
                 features = features.reshape(-1, self.sequence_len, self.dims)
-                outputs = self.model(features)
+                outputs = self.lstm_model(features)
                 
-                loss = self.criterion(outpus, targets)
+                loss = self.criterion(outputs, targets)
                 losses.append(loss.item())
 
                 targets = targets.data.cpu()
@@ -222,12 +222,12 @@ class LSTMModel:
 
     def fit(self):
         for epoch in range(1, self.epochs + 1):
-            scheduler.step(self.current_f1)
+            self.scheduler.step(self.current_f1)
             train_loss, train_accuracy, train_precision, train_recall, train_f1 = self.__train_epoch()
-            print('Epoch: {}/{}, Average train loss: {:.4f}, Average train accuracy: {:.4f}'.format(epoch, n_epochs, train_loss, train_accuracy))
+            print('Epoch: {}/{}, Average train loss: {:.4f}, Average train accuracy: {:.4f}'.format(epoch, self.epochs, train_loss, train_accuracy))
 
             f1, precision, recall, fp, fn, tp, db= self.__test_epoch()
-            print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(epoch, n_epochs, f1, precision, recall, tp, fp, fn))
+            print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(epoch, self.epochs, f1, precision, recall, tp, fp, fn))
 
             self.log_file.write('{},{},{},{},{},{},{},{},{},{},{},{},{}\n'\
                 .format(epoch,
@@ -243,12 +243,12 @@ class LSTMModel:
                     fp,
                     db,
                     fn
-                )
+                ))
 
             self.current_f1 = f1
             if self.current_f1 > self.best_f1:
                 self.best_f1 = self.current_f1
                 self.best_epoch = epoch
-                torch.save(self.lstm_model.state_dict(, self.base_file_name + '.pt'))
+                torch.save(self.lstm_model.state_dict(), self.base_file_name + '.pt')
         
         self.log_file.close()

@@ -22,7 +22,7 @@ def main():
 
         if HYPERPARAM_MODE == params['mode']:
             hyperparam_log_file = open('lstm_hyperparam_optimization.txt', 'w')
-            hyperparam_log_file.write('batch_size,dims,lr,best_epoch,best_f1,last_f1\n')
+            hyperparam_log_file.write('batch_size,dims,lr,sequence_len,lstm_hidden_units,best_epoch,best_f1,last_f1\n')
             best_model_params = None
             best_model_f1 = -1
             base_params = params.copy()
@@ -32,10 +32,12 @@ def main():
                 print('Fitting model with params:',search_params)
                 lstm_model = LSTMModel(search_params, cuda)
                 lstm_model.fit()
-                hyperparam_log_file.write('{},{},{},{},{},{}\n'.format(
+                hyperparam_log_file.write('{},{},{},{},{},{},{},{}\n'.format(
                     search_params['batch_size'],
                     search_params['dims'],
                     search_params['lr'],
+                    search_params['sequence_len'],
+                    search_params['lstm_hidden_units'],
                     lstm_model.best_epoch,
                     lstm_model.best_f1,
                     lstm_model.current_f1
@@ -48,3 +50,7 @@ def main():
         else:
             lstm_model = LSTMModel(params, cuda)
             lstm_model.fit()
+
+
+if __name__ == '__main__':
+    main()
