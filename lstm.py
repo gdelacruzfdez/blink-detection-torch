@@ -37,6 +37,7 @@ class LSTMModel:
         self.batch_size = params.get('batch_size')
         self.dims = params.get('dims')
         self.cnn_model_file = params.get('cnn_model_file')
+        self.lstm_model_file = params.get('lstm_model_file')
         self.lstm_hidden_units = params.get('lstm_hidden_units')
         self.sequence_len = params.get('sequence_len')
         self.epochs = params.get('epochs')
@@ -217,7 +218,12 @@ class LSTMModel:
         return evaluate(dataframe)
 
 
-
+    def eval(self):
+        self.lstm_model.load_state_dict(torch.load(self.lstm_model_file))
+        self.lstm_model.eval()
+        if self.cuda:
+            self.lstm_model = self.lstm_model.cuda()
+        self.__test_epoch()
 
 
     def fit(self):

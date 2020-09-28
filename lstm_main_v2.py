@@ -8,6 +8,7 @@ from sklearn.model_selection import ParameterGrid
 
 HYPERPARAM_MODE = 'HYPERPARAM_MODE'
 TRAINING_MODE = 'TRAINING_MODE'
+EVAL_MODE = 'EVAL_MODE'
 
 
 def main():
@@ -47,6 +48,9 @@ def main():
                     best_model_params = search_params
                     print('Best model params! F1:{}'.format(best_model_f1), best_model_params)
             hyperparam_log_file.close()
+        elif EVAL_MODE == params['mode']:
+            lstm_model = LSTMModel(params,cuda)
+            lstm_model.eval()
         else:
             lstm_model = LSTMModel(params, cuda)
             lstm_model.fit()
