@@ -223,7 +223,6 @@ class LSTMModel:
         self.lstm_model.eval()
         if self.cuda:
             self.lstm_model = self.lstm_model.cuda()
-        self.__test_epoch()
         f1, precision, recall, fp, fn, tp, db= self.__test_epoch()
         print('Eval results => F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(f1, precision, recall, tp, fp, fn))
 
