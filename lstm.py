@@ -3,6 +3,7 @@ import dataloader
 import network
 import numpy as np
 import torch
+from sklearn import metrics
 from tqdm import tqdm
 from PIL import Image
 from functional import seq
@@ -248,6 +249,18 @@ class LSTMModel:
             return evaluatePartialBlinks(dataframe)
         elif dataloader.BLINK_DETECTION_MODE == self.eval_mode:
             return evaluate(dataframe)
+        elif dataloader.EYE_STATE_DETECTION_MODE == self.eval_mode:
+            leftEyes = dataframe[dataframe['eye'] == 'LEFT']
+            rightEyes = dataframe[dataframe['eye'] == 'RIGHT']
+            blinksPerFrames = dataframe.groupby(['frameId', 'video'])
+            blinks = blinksPerFrames.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
+            preds = blinksPerFrames.pred.apply(lambda x: max(x.values.tolist()))
+            print(metrics.classification_report(blinks, preds, target_names=['Open', 'Closed']))
+            print(metrics.confusion_matrix(blinks, preds))
+            precisionRecallF1 = metrics.precision_recall_fscore_support(blinks, preds, average='binary')
+            print(precisionRecallF1)
+            results = {'f1': precisionRecallF1[2], 'precision':precisionRecallF1[0], 'recall': precisionRecallF1[1], 'fp':FP, 'fn': FN, 'tp':TP, db: 0}
+            return results
 
     def eval(self):
         self.lstm_model.load_state_dict(torch.load(self.lstm_model_file))
@@ -302,7 +315,7 @@ class LSTMModel:
                                             results_complete['db'],
                                             results_complete['fn']
                                             ))
-            elif dataloader.BLINK_DETECTION_MODE == self.eval_mode:
+            elif dataloader.BLINK_DETECTION_MODE == self.eval_mode or dataloader.EYE_STATE_DETECTION_MODE == self.eval_mode:
                 self.current_f1 = results['f1']
                 print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(
                     epoch, self.epochs, results['f1'], results['precision'], results['recall'], results['tp'], results['fp'], results['fn']))
