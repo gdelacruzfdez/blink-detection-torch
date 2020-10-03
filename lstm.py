@@ -47,20 +47,22 @@ class LSTMModel:
         self.lr = params.get('lr')
 
         self.cuda = cuda
-        self.train_dataset_dirs = seq(params.get('train_dataset_dirs'))\
-            .map(lambda x: "{}/{}".format(params.get('datasets_base_path'), x))
-        self.test_dataset_dirs = seq(params.get('test_dataset_dirs'))\
-            .map(lambda x: "{}/{}".format(params.get('datasets_base_path'), x))
+        if 'train_dataset_dirs' in params:
+            self.train_dataset_dirs = seq(params.get('train_dataset_dirs'))\
+                .map(lambda x: "{}/{}".format(params.get('datasets_base_path'), x))
+        if 'test_dataset_dirs' in params:
+            self.test_dataset_dirs = seq(params.get('test_dataset_dirs'))\
+                .map(lambda x: "{}/{}".format(params.get('datasets_base_path'), x))
 
         self.best_f1 = -1
         self.best_epoch = -1
         self.current_f1 = -1
 
-        self.__initialize_log_file()
-        self.__initialize_train_loader()
-        self.__initialize_evaluation_loader()
         self.__initialize_cnn_model()
         self.__initialize_lstm_model()
+        self.__initialize_log_file()    
+        self.__initialize_train_loader()
+        self.__initialize_evaluation_loader()
         self.__initialize_training_parameters()
 
     def __initialize_log_file(self):
@@ -105,8 +107,9 @@ class LSTMModel:
             self.cnn_model = self.cnn_model.cuda()
 
     def __initialize_lstm_model(self):
+        self.num_classes = 3 if self.eval_mode == dataloader.BLINK_COMPLETENESS_MODE else 2
         self.lstm_model = network.BiRNN(
-            self.dims, self.lstm_hidden_units, self.lstm_layers, 2)
+            self.dims, self.lstm_hidden_units, self.lstm_layers, self.num_classes)
         if self.cuda:
             self.lstm_model = self.lstm_model.cuda()
 
@@ -177,13 +180,14 @@ class LSTMModel:
 
         return np.mean(losses), np.mean(accuracies), precision, recall, f1
 
-    def __test_epoch(self):
+    def __test_epoch(self, evaluation=False):
         losses = []
         accuracies = []
         TN = FN = TP = FP = 0
         progress = tqdm(enumerate(self.test_loader), total=len(
             self.test_loader), desc='Testing', file=sys.stdout)
         predictions = np.array([])
+        all_targets = np.array([])
 
         for batch_idx, data in progress:
             samples, targets = data
@@ -215,6 +219,7 @@ class LSTMModel:
                 targets = targets.data.cpu()
                 _, predicted = torch.max(outputs.data, 1)
                 predicted = predicted.data.cpu()
+                all_targets = np.concatenate((all_targets, targets))
                 predictions = np.concatenate((predictions, predicted))
 
                 perf = self.__perf_measure(targets, predicted)
@@ -234,18 +239,22 @@ class LSTMModel:
 
         dataframe = self.test_loader.dataset.getDataframe().copy()
         predictions = predictions[:len(dataframe)]
+        all_targets = all_targets[:len(dataframe)]
         dataframe['pred'] = predictions
+        dataframe['targets'] = all_targets
+        if evaluation:
+            dataframe.to_csv('-'.join(self.params.get('test_dataset_dirs')) + '-' + self.eval_mode + '.csv', index=False)
         if dataloader.BLINK_COMPLETENESS_MODE == self.eval_mode:
-            return evaluate(dataframe)
-        elif dataloader.BLINK_DETECTION_MODE == self.eval_mode:
             return evaluatePartialBlinks(dataframe)
+        elif dataloader.BLINK_DETECTION_MODE == self.eval_mode:
+            return evaluate(dataframe)
 
     def eval(self):
         self.lstm_model.load_state_dict(torch.load(self.lstm_model_file))
         self.lstm_model.eval()
         if self.cuda:
             self.lstm_model = self.lstm_model.cuda()
-        results = self.__test_epoch()
+        results = self.__test_epoch(True)
         if dataloader.BLINK_COMPLETENESS_MODE == self.eval_mode:
             results_partial, results_complete = results
             print('Eval results partial => F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(

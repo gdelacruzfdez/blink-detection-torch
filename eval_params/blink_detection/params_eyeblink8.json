@@ -1,0 +1,16 @@
+{
+    "mode": "EVAL_MODE",
+    "eval_mode": "BLINK_DETECTION_MODE",
+    "datasets_base_path": "/mnt/hdd/gcruz/eyesOriginalSize2",
+    "cnn_model_file": "/home/gcruz/blink-detection/blink-detection-torch/CNN_Hyperparam/cnn_model.pt",
+    "lstm_model_file": "/home/gcruz/blink-detection/blink-detection-torch/LSTM_Train/lstm_model.pt",
+    "train_dataset_dirs": ["RN15Train","RN30Train","RN15Train","RN30Train"],
+    "test_dataset_dirs": ["eyeblink8"],
+    "batch_size":512,
+    "dims": 256,
+    "epochs":50,
+    "lr": 0.0001,
+    "lstm_layers": 2,
+    "sequence_len": 64,
+    "lstm_hidden_units": 256
+}
