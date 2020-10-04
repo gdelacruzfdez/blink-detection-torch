@@ -1,252 +1,60 @@
 
-import os
 import sys
-import argparse
-
-import numpy as np
-from PIL import Image
-from sklearn import metrics
-from tqdm import tqdm
-
+import json
 import torch
-from torchvision.transforms import transforms
-from torch.utils.data import DataLoader
-from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
-from torch.nn import BCELoss, CrossEntropyLoss 
-from sklearn.utils.class_weight import compute_class_weight
+import argparse
+from lstm import create_lstm_model
+from sklearn.model_selection import ParameterGrid
 
-from dataloader import SiameseDataset, LSTMDataset, BalancedBatchSampler, BLINK_DETECTION_MODE
-from network import EmbeddingNet, SiameseNetV2, BiRNN, LSTM
-from loss import OnlineTripletLoss, ContrastiveLoss
-from augmentator import ImgAugTransform, LSTMImgAugTransform
-from evaluation import evaluate
-
-DATA_BASE_PATH = '/mnt/hdd/gcruz/eyesOriginalSize2'
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('dataset_dirs', type=str)
-    parser.add_argument('--test_dataset_dirs', type=str)
-    parser.add_argument('--epochs', type=int, default = 20)
-    parser.add_argument('--input_size', type=int, default=100)
-    parser.add_argument('--batch_size', type=int, default=500)
-    parser.add_argument('--dims', type=int, default=256)
-    parser.add_argument('--lstm_layers', type=int, default=2)
-    parser.add_argument('--lstm_hidden_units', type=int, default=512)
-    parser.add_argument('--cnn_model', type=str)
-    parser.add_argument('--model_file', type=str)
-    parser.add_argument('--sequence_len', type=int, default=100)
-    return parser.parse_args()
-
-def fit(train_loader, test_loader, model, cnn_model, criterion, optimizer, scheduler, n_epochs, cuda, args):
-    bestf1 = 0
-    currentf1 = 0
-    for epoch in range(1, n_epochs + 1):
-        if scheduler.num_bad_epochs == scheduler.patience and bestf1!=currentf1:
-            print('Reducing learning rate and restoring best weights to F1: ' + str(bestf1))
-            model.load_state_dict(torch.load(args.model_file))
-        scheduler.step(currentf1)
-
-        train_loss, train_accuracy= train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args)
-        print('Epoch: {}/{}, Average train loss: {:.4f}, Average train accuracy: {:.4f}'.format(epoch, n_epochs, train_loss, train_accuracy))
-
-        if test_loader is not None:
-            f1, precision, recall, fp, fn, tp, db= test_epoch(test_loader, model, cnn_model, criterion, cuda, args)
-            print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(epoch, n_epochs, f1, precision, recall, tp, fp, fn))
-            currentf1 = f1
-            if currentf1 > bestf1:
-                print('Best model! New F1:{:.4f} | Previous F1 {:.4f}'.format(f1,bestf1))
-                print('')
-                bestf1 = currentf1
-                torch.save(model.state_dict(), args.model_file)
-            if epoch % 10 == 0:
-                torch.save(model.state_dict(), '{}_{}EP.pt'.format(args.model_file, epoch))
-
-def perf_measure(y_actual, y_hat):
-    TP = 0
-    FP = 0
-    TN = 0
-    FN = 0
-
-    for i in range(len(y_hat)): 
-        if y_actual[i]==y_hat[i]==1:
-           TP += 1
-        if y_hat[i]==1 and y_actual[i]!=y_hat[i]:
-           FP += 1
-        if y_actual[i]==y_hat[i]==0:
-           TN += 1
-        if y_hat[i]==0 and y_actual[i]!=y_hat[i]:
-           FN += 1
-
-    return(TP, FP, TN, FN)
-
-def train_epoch(train_loader, model, cnn_model, criterion, optimizer, cuda, args):
-    model.train()
-
-    losses = []
-    accuracies = []
-    TN = 0
-    FN = 0
-    TP = 0
-    FP = 0
-    progress = tqdm(enumerate(train_loader), total=len(train_loader), desc='Training', file=sys.stdout)
-    for batch_idx, data in progress:
-        samples, targets = data
-        if cuda:
-            samples = samples.cuda()
-            targets = targets.cuda()
-        
-        features = cnn_model.get_embedding(samples)
-
-        if features.numel() <  args.dims * args.batch_size:
-            continue
-        features = features.reshape(-1, args.sequence_len, args.dims)
-        
-
-        outputs = model(features)
-
-
-        loss = criterion(outputs, targets)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        losses.append(loss.item())
-        targets = targets.data.cpu()
-        _, predicted = torch.max(outputs.data, 1)
-        predicted = predicted.data.cpu()
-        perf = perf_measure(targets, predicted)
-
-        TN += perf[2]
-        FN += perf[3]
-        TP += perf[0]
-        FP += perf[1] 
-
-        acc = (TP + TN) / (FP + FN + TP + TN)
-        precision = TP / (TP + FP) if TP + FP > 0 else 0
-        recall = TP / (TP + FN) if TP + FN > 0 else 0
-        f1 = 2 * ( precision * recall ) / ( precision + recall ) if precision + recall > 0 else 0
-        accuracies.append(acc)
-        progress.set_description('Training Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
-
-    return np.mean(losses), np.mean(accuracies)
-
-
-def test_epoch(test_loader, model, cnn_model, criterion, cuda, args):
-    losses = []
-    accuracies = []
-    TN = 0
-    FN = 0
-    TP = 0
-    FP = 0
-    progress = tqdm(enumerate(test_loader), total=len(test_loader), desc='Testing', file=sys.stdout)
-    predictions = np.array([])
-
-    for batch_idx, data in progress:
-        samples, targets = data
-        if cuda:
-            samples = samples.cuda()
-            targets = targets.cuda()
-        
-        with torch.no_grad():
-            features = cnn_model.get_embedding(samples)
-
-            if features.numel() <  args.dims * args.batch_size:
-                zeros_features = torch.zeros(args.batch_size - features.shape[0], args.dims)
-                zeros_features = zeros_features.cuda()
-                features = torch.cat((features, zeros_features))
-                zeros_targets = torch.zeros(args.batch_size - targets.shape[0], dtype=torch.long)
-                zeros_targets = zeros_targets.cuda()
-                targets = torch.cat((targets, zeros_targets))
-
-            features = features.reshape(-1, args.sequence_len, args.dims)
-            outputs = model(features)
-
-            loss = criterion(outputs, targets)
-
-            losses.append(loss.item())
-            targets = targets.data.cpu()
-            _, predicted = torch.max(outputs.data, 1)
-            predicted = predicted.data.cpu()
-            predictions = np.concatenate((predictions, predicted))
-
-            perf = perf_measure(targets, predicted)
-
-            TN += perf[2]
-            FN += perf[3]
-            TP += perf[0]
-            FP += perf[1] 
-
-            acc = (TP + TN) / (FP + FN + TP + TN)
-            accuracies.append(acc)
-            precision = TP / (TP + FP) if TP + FP > 0 else 0
-            recall = TP / (TP + FN) if TP + FN > 0 else 0
-            f1 = 2 * ( precision * recall ) / ( precision + recall ) if precision + recall > 0 else 0
-            progress.set_description('Test Loss: {:.4f} | Accuracy: {:.4f} | F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | TN: {} | FP: {} | FN: {}'.format(loss.item(), acc,f1, precision, recall, TP, TN, FP, FN))
-    dataframe = test_loader.dataset.getDataframe().copy()
-    predictions = predictions[:len(dataframe)]
-    dataframe['pred'] = predictions
-    return evaluate(dataframe)
+HYPERPARAM_MODE = 'HYPERPARAM_MODE'
+TRAINING_MODE = 'TRAINING_MODE'
+EVAL_MODE = 'EVAL_MODE'
 
 
 def main():
-    args = parse_args()
     cuda = torch.cuda.is_available()
     if cuda:
         print('Device: {}'.format(torch.cuda.get_device_name(0)))
 
-    cnn_model = SiameseNetV2(args.dims)
-    cnn_model.load_state_dict(torch.load(args.cnn_model))
-    cnn_model.eval()
-    lstm_model = BiRNN(args.dims, args.lstm_hidden_units, args.lstm_layers,2)
-    if cuda:
-        lstm_model = lstm_model.cuda()
-        cnn_model = cnn_model.cuda()
-    
+    json_params_file = sys.argv[1]
+    with open(json_params_file, "r") as json_file:
+        params = json.load(json_file)
+        print(params)
 
-    train_transform = transforms.Compose([
-        transforms.Resize((100,100), interpolation=Image.BICUBIC),
-        #LSTMImgAugTransform(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
-    ])
-    
-    test_transform = transforms.Compose([
-        transforms.Resize((100,100), interpolation=Image.BICUBIC),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
-    ])
+        if HYPERPARAM_MODE == params['mode']:
+            hyperparam_log_file = open('lstm_hyperparam_optimization.txt', 'w')
+            hyperparam_log_file.write('batch_size,dims,lr,sequence_len,lstm_hidden_units,best_epoch,best_f1,last_f1\n')
+            best_model_params = None
+            best_model_f1 = -1
+            base_params = params.copy()
+            del base_params['mode']
+            param_grid = ParameterGrid(base_params)
+            for search_params in param_grid:
+                print('Fitting model with params:',search_params)
+                lstm_model = create_lstm_model(search_params, cuda)
+                lstm_model.fit()
+                hyperparam_log_file.write('{},{},{},{},{},{},{},{}\n'.format(
+                    search_params['batch_size'],
+                    search_params['dims'],
+                    search_params['lr'],
+                    search_params['sequence_len'],
+                    search_params['lstm_hidden_units'],
+                    lstm_model.best_epoch,
+                    lstm_model.best_f1,
+                    lstm_model.current_f1
+                ))
+                if lstm_model.best_f1 > best_model_f1:
+                    best_model_f1 = lstm_model.best_f1
+                    best_model_params = search_params
+                    print('Best model params! F1:{}'.format(best_model_f1), best_model_params)
+            hyperparam_log_file.close()
+        elif EVAL_MODE == params['mode']:
+            lstm_model = create_lstm_model(params,cuda)
+            lstm_model.eval()
+        else:
+            lstm_model = create_lstm_model(params, cuda)
+            lstm_model.fit()
 
-    dataset_dirs = args.dataset_dirs.split(',')
-    dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), dataset_dirs))
-
-    train_set = LSTMDataset(dataset_dirs, train_transform, mode = BLINK_DETECTION_MODE)    
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
-    print('TRAIN DATASET LENGTH', len(train_loader.dataset.getDataframe()))
-
-    test_dataset_dirs = args.test_dataset_dirs.split(',')
-    test_dataset_dirs = list(map(lambda x: "{}/{}".format(DATA_BASE_PATH,x), test_dataset_dirs))
-    test_set = LSTMDataset(test_dataset_dirs, test_transform, mode = BLINK_DETECTION_MODE)    
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8)
-    
-    print('TEST DATASET LENGTH', len(test_loader.dataset.getDataframe()))
-    
-    #weights = compute_class_weight('balanced',np.unique(train_loader.dataset.targets),train_loader.dataset.targets)
-    weights = [1, 0.5]
-    print('WEIGHTS', weights)
-    
-    class_weights = torch.FloatTensor(weights).cuda()
-    criterion = CrossEntropyLoss()
-    
-    criterion = CrossEntropyLoss(class_weights)
-    optimizer = Adam(lstm_model.parameters(), lr=1e-4)
-    #scheduler = StepLR(optimizer, 8, gamma=0.1, last_epoch=-1)
-    scheduler = ReduceLROnPlateau(optimizer, 'max', patience=8, factor=0.1, verbose=True)
-
-    fit(train_loader, test_loader, lstm_model, cnn_model, criterion, optimizer, scheduler, args.epochs, cuda, args)
 
 if __name__ == '__main__':
     main()
