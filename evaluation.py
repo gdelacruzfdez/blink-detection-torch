@@ -9,7 +9,9 @@ COMPLETE_BLINK = 1
 
 
 def evaluate(dataframe):
-    return extractBlinks(dataframe)
+    results = extractBlinks(dataframe)
+    print('EVALUATE',results)
+    return results
 
 
 def evaluatePartialBlinks(dataframe):

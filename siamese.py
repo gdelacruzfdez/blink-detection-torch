@@ -77,9 +77,9 @@ class SiameseModel:
         self.train_loader = DataLoader(self.train_set, batch_sampler = self.train_batch_sampler, num_workers=8)
 
     def __initialize_evaluation_loader(self):
-       self.eval_train_set = dataloader.LSTMDataset(self.train_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.EYE_STATE_DETECTION_MODE, videos=self.train_videos)
+       self.eval_train_set = dataloader.EyeStateDetectionSingleInputLSTMDataset(self.train_dataset_dirs, self.TEST_TRANSFORM, videos=self.train_videos)
        self.eval_train_loader = DataLoader(self.eval_train_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=4)
-       self.eval_test_set = dataloader.LSTMDataset(self.test_dataset_dirs, self.TEST_TRANSFORM, mode = dataloader.EYE_STATE_DETECTION_MODE, videos=self.test_videos)
+       self.eval_test_set = dataloader.EyeStateDetectionSingleInputLSTMDataset(self.test_dataset_dirs, self.TEST_TRANSFORM, videos=self.test_videos)
        self.eval_test_loader = DataLoader(self.eval_test_set, batch_size=self.params.get('batch_size'), shuffle=False, num_workers=4)
 
     def __initialize_model(self):

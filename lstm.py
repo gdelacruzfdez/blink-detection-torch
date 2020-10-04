@@ -60,10 +60,10 @@ class LSTMModel(ABC):
         self.current_f1 = -1
 
         self.__initialize_cnn_model()
-        self.__initialize_lstm_model()
+        self.initialize_lstm_model()
         self.__initialize_log_file()    
-        self.__initialize_train_loader()
-        self.__initialize_evaluation_loader()
+        self.initialize_train_loader()
+        self.initialize_evaluation_loader()
         self.__initialize_training_parameters()
 
     def __initialize_log_file(self):
@@ -101,7 +101,7 @@ class LSTMModel(ABC):
         if self.cuda:
             self.cnn_model = self.cnn_model.cuda()
 
-    def __initialize_lstm_model(self):
+    def initialize_lstm_model(self):
         self.lstm_model = network.BiRNN(
             self.dims, self.lstm_hidden_units, self.lstm_layers, self.num_classes)
         if self.cuda:
@@ -274,7 +274,7 @@ class LSTMModel(ABC):
             train_stats = self.__train_epoch(epoch)
 
             test_stats = self.__test_epoch()
-            self.__eval_training(epoch, train_stats, test_stats)
+            self.eval_training(epoch, train_stats, test_stats)
 
             if self.current_f1 > self.best_f1:
                 self.best_f1 = self.current_f1
@@ -285,7 +285,7 @@ class LSTMModel(ABC):
         self.log_file.close()
 
 
-    def __eval_training(self, epoch, train_stats, eval_stats):
+    def eval_training(self, epoch, train_stats, eval_stats):
         self.current_f1 = eval_stats['f1']
         print('Epoch: {}/{}, F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(
             epoch, self.epochs, eval_stats['f1'], eval_stats['precision'], eval_stats['recall'], eval_stats['tp'], eval_stats['fp'], eval_stats['fn']))
@@ -327,6 +327,7 @@ class BlinkDetectionLSTMModel(LSTMModel):
 
 
     def evaluate_results(self, dataframe):
+        stats = evaluate(dataframe)
         return evaluate(dataframe)
 
 
@@ -349,21 +350,21 @@ class EyeStateDetectionLSTMModel(LSTMModel):
         self.test_loader = DataLoader(
             self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
     
-    def __initialize_lstm_model(self):
+    def initialize_lstm_model(self):
         self.lstm_model = network.BiRNN(
             2 * self.dims, self.lstm_hidden_units, self.lstm_layers, self.num_classes)
         if self.cuda:
             self.lstm_model = self.lstm_model.cuda()
     
-    def __process_samples_through_cnn(self, samples, targets):
+    def process_samples_through_cnn(self, samples, targets):
         left_eyes, right_eyes = samples
         if self.cuda:
             targets = targets.cuda()
             left_eyes = left_eyes.cuda()
             right_eyes = right_eyes.cuda()
         
-        left_eye_features = super().__process_samples_through_cnn(left_eyes, targets)
-        right_eye_features = super().__process_samples_through_cnn(right_eyes, targets)
+        left_eye_features = super().process_samples_through_cnn(left_eyes, targets)
+        right_eye_features = super().process_samples_through_cnn(right_eyes, targets)
 
         concatenation = torch.cat((left_eye_features, right_eye_features), 2)
         return concatenation, targets
@@ -409,7 +410,7 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
             self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
     
-    def __eval_training(self, epoch, train_stats, eval_stats):
+    def eval_training(self, epoch, train_stats, eval_stats):
         eval_stats_partial, eval_stats_complete = eval_stats
         self.current_f1 = eval_stats_partial['f1'] + eval_stats_complete['f1']
         print('Epoch: {}/{}, Partial => F1:  {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(
@@ -439,7 +440,7 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
                                     eval_stats_complete['fn']
                                     ))
 
-    def __print_eval_results(self, results):
+    def print_eval_results(self, results):
         results_partial, results_complete = results
         print('Eval results partial => F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(
             results_partial['f1'], results_partial['precision'], results_partial['recall'], results_partial['tp'], results_partial['fp'], results_partial['fn']))

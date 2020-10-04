@@ -24,6 +24,7 @@ class BlinkDataset(Dataset):
         self.transform = transform
 
         self.__initialize_dataframe_from_paths(paths, videos)
+        self.set_target_column()
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
         self.dataframe['pred'] = 0
@@ -46,21 +47,29 @@ class BlinkDataset(Dataset):
             dataframe['video'] = dataframe['video'] +  max_num_video
             max_num_video = dataframe_max_video
             dataframes.append(dataframe)
-        
+    
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
         self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
+    
+    def __len__(self):
+        return len(self.dataframe)
+
+    def getDataframeRow(self, idx):
+        return self.dataframe.iloc[idx]
+
+    def getDataframe(self):
+        return self.dataframe
+    
+    def set_target_column(self):
+        # Must be overrriden in child classes
+        pass
 
 
 class LSTMDataset(BlinkDataset):
 
     def __init__(self, paths, transform, videos = None):
         super().__init__(paths, transform, videos=videos)
-        self.__set_target_column()
 
-
-    def __set_target_column(self):
-        # Must be overrriden in child classes
-        pass
 
     def __len__(self):
         return len(self.dataframe) 
@@ -88,19 +97,19 @@ class LSTMDataset(BlinkDataset):
 
 class BlinkDetectionLSTMDataset(LSTMDataset):
 
-    def __set_target_column(self):
+    def set_target_column(self):
         self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int)
 
 
 class BlinkCompletenessDetectionLSTMDataset(LSTMDataset):
 
-    def __set_target_column(self):
+    def set_target_column(self):
         self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
 
 
 class EyeStateDetectionSingleInputLSTMDataset(LSTMDataset):
 
-    def __set_target_column(self):
+    def set_target_column(self):
         self.dataframe[self.y_col] = (self.dataframe['blink'] > 0).astype(int)
 
 
@@ -178,15 +187,10 @@ class SiameseDataset(BlinkDataset):
         super().__init__(paths, transform,y_col='blink', videos=videos)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
+    
+    def set_target_column(self):
+        self.dataframe[self.y_col] = self.dataframe['blink'].astype(int)
 
-    def __len__(self):
-        return len(self.dataframe)
-
-    def getDataframeRow(self, idx):
-        return self.dataframe.iloc[idx]
-
-    def getDataframe(self):
-        return self.dataframe
     
     def __getitem__(self, idx):
         target = int(rand.random_sample() > POSITIVE_NEGATIVE_RATIO)
