@@ -140,10 +140,8 @@ class LSTMModel(ABC):
             self.train_loader), desc='Training', file=sys.stdout)
         for batch_idx, data in progress:
             samples, targets = data
-            if self.cuda:
-                targets = targets.cuda()
 
-            features = self.__process_samples_through_cnn(samples)
+            features, targets  = self.__process_samples_through_cnn(samples, targets)
 
             outputs = self.lstm_model(features)
 
@@ -176,17 +174,18 @@ class LSTMModel(ABC):
             epoch, self.epochs, train_stats['loss'], train_stats['accuracy']))
         return train_stats
 
-    def __process_samples_through_cnn(self, samples):
+    def __process_samples_through_cnn(self, samples, targets):
         if self.cuda:
             samples = samples.cuda()
+            targets = targets.cuda()
         
         features = self.cnn_model.get_embedding(samples)
-        features = self.__fill_features_if_needed(features)
+        features, targets = self.__fill_features_if_needed(features, targets)
         features = features.reshape(-1, self.sequence_len, self.dims)
 
-        return features
+        return features, targets
 
-    def __fill_features_if_needed(self, features):
+    def __fill_features_if_needed(self, features, targets):
         if features.numel() < self.dims * self.batch_size:
             zeros_features = torch.zeros(
                 self.batch_size - features.shape[0], self.dims)
@@ -198,7 +197,7 @@ class LSTMModel(ABC):
             if self.cuda:
                 zeros_targets = zeros_targets.cuda()
             targets = torch.cat((targets, zeros_targets))
-        return features
+        return features, targets
 
 
     def __test_epoch(self, evaluation=False):
@@ -217,21 +216,10 @@ class LSTMModel(ABC):
                 targets = targets.cuda()
 
             with torch.no_grad():
-                features = self.cnn_model.get_embedding(samples)
+                samples, targets = data
 
-                if features.numel() < self.dims * self.batch_size:
-                    zeros_features = torch.zeros(
-                        self.batch_size - features.shape[0], self.dims)
-                    if self.cuda:
-                        zeros_features = zeros_features.cuda()
-                    features = torch.cat((features, zeros_features))
-                    zeros_targets = torch.zeros(
-                        self.batch_size - targets.shape[0], dtype=torch.long)
-                    if self.cuda:
-                        zeros_targets = zeros_targets.cuda()
-                    targets = torch.cat((targets, zeros_targets))
+                features, targets  = self.__process_samples_through_cnn(samples, targets)
 
-                features = features.reshape(-1, self.sequence_len, self.dims)
                 outputs = self.lstm_model(features)
 
                 loss = self.criterion(outputs, targets)
@@ -265,10 +253,10 @@ class LSTMModel(ABC):
         dataframe['targets'] = all_targets
         if evaluation:
             dataframe.to_csv('-'.join(self.params.get('test_dataset_dirs')) + '-' + self.eval_mode + '.csv', index=False)
-        return self.__evaluate_results(dataframe)
+        return self.evaluate_results(dataframe)
 
     @abstractmethod
-    def __evaluate_results(self, dataframe):
+    def evaluate_results(self, dataframe):
         pass
 
     def eval(self):
@@ -290,7 +278,7 @@ class LSTMModel(ABC):
             train_stats = self.__train_epoch(epoch)
 
             test_stats = self.__test_epoch()
-            self.__eval_training(train_stats, test_stats)
+            self.__eval_training(epoch, train_stats, test_stats)
 
             if self.current_f1 > self.best_f1:
                 self.best_f1 = self.current_f1
@@ -326,11 +314,11 @@ class BlinkDetectionLSTMModel(LSTMModel):
 
 
     def __init__(self, params, cuda):
-        super().__init__(self, params, cuda)
         self.num_classes = 2
+        super().__init__(params, cuda)
 
 
-    def __evaluate_results(self, dataframe):
+    def evaluate_results(self, dataframe):
         return evaluate(dataframe)
 
 
@@ -338,8 +326,8 @@ class BlinkDetectionLSTMModel(LSTMModel):
 class EyeStateDetectionLSTMModel(LSTMModel):
 
     def __init__(self, params, cuda):
-        super().__init__(self, params, cuda)
         self.num_classes = 2
+        super().__init__(params, cuda)
 
     def __initialize_train_loader(self):
         self.train_set = dataloader.EyeStateDetectionLSTMDataset(
@@ -359,29 +347,31 @@ class EyeStateDetectionLSTMModel(LSTMModel):
         if self.cuda:
             self.lstm_model = self.lstm_model.cuda()
     
-    def __process_samples_through_cnn(self, samples):
+    def __process_samples_through_cnn(self, samples, targets):
         left_eyes, right_eyes = samples
         if self.cuda:
+            targets = targets.cuda()
             left_eyes = left_eyes.cuda()
             right_eyes = right_eyes.cuda()
         
-        left_eye_features = super().__process_samples_through_cnn(left_eyes)
-        right_eye_features = super().__process_samples_through_cnn(right_eyes)
+        left_eye_features = super().__process_samples_through_cnn(left_eyes, targets)
+        right_eye_features = super().__process_samples_through_cnn(right_eyes, targets)
 
         concatenation = torch.cat((left_eye_features, right_eye_features), 2)
-        return concatenation
+        return concatenation, targets
 
-    def __evaluate_results(self, dataframe):
+    def evaluate_results(self, dataframe):
         #blinksPerFrames = dataframe.groupby(['frameId', 'video'])
         preds = dataframe['pred']
         targets = dataframe['targets']
         #blinks = blinksPerFrames.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
         #preds = blinksPerFrames.pred.apply(lambda x: max(x.values.tolist()))
         print(metrics.classification_report(targets, preds, target_names=['Open', 'Closed']))
-        print(metrics.confusion_matrix(preds, preds))
+        confussion_matrix = metrics.confusion_matrix(targets, preds).ravel()
+        print(confussion_matrix)
         precisionRecallF1 = metrics.precision_recall_fscore_support(targets, preds, average='binary')
         print(precisionRecallF1)
-        results = {'f1': precisionRecallF1[2], 'precision':precisionRecallF1[0], 'recall': precisionRecallF1[1], 'fp':FP, 'fn': FN, 'tp':TP, db: 0}
+        results = {'f1': precisionRecallF1[2], 'precision':precisionRecallF1[0], 'recall': precisionRecallF1[1], 'fp':confussion_matrix[1], 'fn': confussion_matrix[2], 'tp':confussion_matrix[3], 'db': 0}
         return results
 
         
@@ -391,11 +381,11 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
     
 
     def __init__(self, params, cuda):
-        super().__init__(self, params, cuda)
         self.num_classes = 3
+        super().__init__(params, cuda)
         self.LOG_FILE_HEADER = 'EPOCH,TRAIN_LOSS,TRAIN_ACCURACY,TRAIN_PRECISION,TRAIN_RECALL,TRAIN_F1,PARTIAL_F1,PARTIAL_PRECISION,PARTIAL_RECALL,PARTIAL_TP,PARTIAL_FP,PARTIAL_TN,PARTIAL_FN,COMPLETE_F1,COMPLETE_PRECISION,COMPLETE_RECALL,COMPLETE_TP,COMPLETE_FP,COMPLETE_TN,COMPLETE_FN'
     
-    def __evaluate_results(self, dataframe):
+    def evaluate_results(self, dataframe):
         return evaluatePartialBlinks(dataframe)
 
     
@@ -439,11 +429,12 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
 
 
 def create_lstm_model(params, cuda):
-    if 'BLINK_DETECTION_MODE' == params.eval_mode:
+    eval_mode = params.get('eval_mode')
+    if 'BLINK_DETECTION_MODE' == eval_mode:
         return BlinkDetectionLSTMModel(params, cuda)
-    elif 'BLINK_COMPLETENESS_DETECTION' == params.eval_mode:
+    elif 'BLINK_COMPLETENESS_MODE' == eval_mode:
         return BlinkCompletenessDetectionLSTMModel(params, cuda)
-    elif 'EYE_STATE_DETECTION' == params.eval_mode:
+    elif 'EYE_STATE_DETECTION_MODE' == eval_mode:
         return EyeStateDetectionLSTMModel(params, cuda)
     else:
-        sys.exit('Unknown eval_mode=' + params.eval_mode)
+        sys.exit('Unknown eval_mode=' + eval_mode)

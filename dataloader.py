@@ -113,7 +113,7 @@ class EyeStateDetectionLSTMDataset(Dataset):
         self.targets = blinks_per_frame.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
 
     def __len__(self):
-        return len(self.dataframe) 
+        return len(self.targets) 
 
     def getDataframeRow(self, idx):
         return self.dataframe.iloc[idx]
