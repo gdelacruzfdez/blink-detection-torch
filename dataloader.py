@@ -7,6 +7,7 @@ from torch.utils.data.sampler import BatchSampler
 import pandas as pd
 from PIL import Image
 from evaluation import evaluate
+from functools import reduce
 
 POSITIVE_NEGATIVE_RATIO = 0.5
 SAME_CLASS = 1
@@ -76,6 +77,74 @@ class LSTMDataset(Dataset):
             sample = self.transform(sample)
 
         return sample, target
+
+
+class EyeStateDetectionLSTMDataset(Dataset):
+
+    def __init__(self, paths, transform,  videos = None):
+        self.x_col = 'complete_path'
+        self.y_col = 'target'
+        self.transform = transform
+
+        dataframes = []
+        maxNumVideo = 0
+        for root in paths:
+            csvFilePath = root + '.csv'
+            dataframe = pd.read_csv(csvFilePath)
+            dataframe['base_path'] = root
+
+            completePaths = []
+            for idx, row in dataframe.iterrows():
+                completePaths.append(os.path.join(row['base_path'], row['frame']))
+            dataframe['complete_path'] = completePaths
+            if videos != None:
+                dataframe = dataframe[dataframe.video.isin(videos)]
+            dataframeMaxVideo = dataframe['video'].max()
+            dataframe['video'] = dataframe['video'] +  maxNumVideo
+            maxNumVideo = dataframeMaxVideo
+            dataframes.append(dataframe)
+        
+        self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
+        self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
+
+        self.left_eyes = self.dataframe[self.dataframe['eye'] == 'LEFT']
+        self.right_eyes = self.dataframe[self.dataframe['eye'] == 'RIGHT']
+        blinks_per_frame = self.dataframe.groupby(['frameId', 'video'])
+        self.targets = blinks_per_frame.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
+
+    def __len__(self):
+        return len(self.dataframe) 
+
+    def getDataframeRow(self, idx):
+        return self.dataframe.iloc[idx]
+
+    def getDataframe(self):
+        return self.dataframe
+
+    def __get_eye_image(self, idx, position):
+        if 'RIGHT' == position:
+            eye_row = self.right_eyes.iloc[idx]
+        else:
+            eye_row = self.left_eyes.iloc[idx]
+
+        if 'NOT_VISIBLE' in eye_row['complete_path']:
+            eye_image =  Image.new('RGB', (100,100))
+        else:
+            eye_image = Image.open(eye_row['complete_path'])
+        
+        return eye_image
+    
+    def __getitem__(self, idx):
+        left_eye = self.__get_eye_image(idx, 'LEFT')
+        right_eye = self.__get_eye_image(idx, 'RIGHT')
+        
+        target = self.targets[idx]
+
+        if self.transform is not None:
+            left_eye = self.transform(left_eye)
+            right_eye = self.transform(right_eye)
+
+        return (left_eye, right_eye), target
 
 class SiameseCUDADataset(Dataset):
 

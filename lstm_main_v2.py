@@ -3,7 +3,7 @@ import sys
 import json
 import torch
 import argparse
-from lstm import LSTMModel
+from lstm import create_lstm_model
 from sklearn.model_selection import ParameterGrid
 
 HYPERPARAM_MODE = 'HYPERPARAM_MODE'
@@ -31,7 +31,7 @@ def main():
             param_grid = ParameterGrid(base_params)
             for search_params in param_grid:
                 print('Fitting model with params:',search_params)
-                lstm_model = LSTMModel(search_params, cuda)
+                lstm_model = create_lstm_model(search_params, cuda)
                 lstm_model.fit()
                 hyperparam_log_file.write('{},{},{},{},{},{},{},{}\n'.format(
                     search_params['batch_size'],
@@ -49,10 +49,10 @@ def main():
                     print('Best model params! F1:{}'.format(best_model_f1), best_model_params)
             hyperparam_log_file.close()
         elif EVAL_MODE == params['mode']:
-            lstm_model = LSTMModel(params,cuda)
+            lstm_model = create_lstm_model(params,cuda)
             lstm_model.eval()
         else:
-            lstm_model = LSTMModel(params, cuda)
+            lstm_model = create_lstm_model(params, cuda)
             lstm_model.fit()
 
 
