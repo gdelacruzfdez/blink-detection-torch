@@ -66,20 +66,3 @@ class BiRNN(nn.Module):
         predictions =  nn.functional.softmax(out)
         return predictions
 
-
-class LSTM(nn.Module):
-    def __init__(self, input_size, hidden_layer_size, num_layers, output_size):
-        super().__init__()
-        self.hidden_layer_size = hidden_layer_size
-
-        self.lstm = nn.LSTM(input_size, hidden_layer_size)
-
-        self.linear = nn.Linear(hidden_layer_size, output_size)
-
-        self.hidden_cell = (torch.zeros(1,1,self.hidden_layer_size).cuda(),
-                            torch.zeros(1,1,self.hidden_layer_size).cuda())
-
-    def forward(self, input_seq):
-        lstm_out, self.hidden_cell = self.lstm(input_seq.view(len(input_seq) ,1, -1), self.hidden_cell)
-        predictions = nn.functional.softmax(self.linear(lstm_out.view(len(input_seq), -1)))
-        return predictions

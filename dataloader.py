@@ -16,15 +16,21 @@ BLINK_DETECTION_MODE = 'BLINK_DETECTION_MODE'
 BLINK_COMPLETENESS_MODE = 'BLINK_COMPLETENESS_MODE'
 EYE_STATE_DETECTION_MODE = 'EYE_STATE_DETECTION_MODE'
 
+class BlinkDataset(Dataset):
 
-class LSTMDataset(Dataset):
-
-    def __init__(self, paths, transform, mode = BLINK_DETECTION_MODE, videos = None):
+    def __init__(self, paths, transform,y_col='target', videos = None):
         self.x_col = 'complete_path'
-        self.y_col = 'target'
+        self.y_col = y_col
         self.transform = transform
+
+        self.__initialize_dataframe_from_paths(paths, videos)
+        self.targets = self.dataframe[self.y_col]
+        self.classes = np.unique(self.dataframe[self.y_col])
+        self.dataframe['pred'] = 0
+
+    def __initialize_dataframe_from_paths(self, paths, videos):
         dataframes = []
-        maxNumVideo = 0
+        max_num_video = 0
         for root in paths:
             csvFilePath = root + '.csv'
             dataframe = pd.read_csv(csvFilePath)
@@ -36,24 +42,25 @@ class LSTMDataset(Dataset):
             dataframe['complete_path'] = completePaths
             if videos != None:
                 dataframe = dataframe[dataframe.video.isin(videos)]
-            dataframeMaxVideo = dataframe['video'].max()
-            dataframe['video'] = dataframe['video'] +  maxNumVideo
-            maxNumVideo = dataframeMaxVideo
+            dataframe_max_video = dataframe['video'].max()
+            dataframe['video'] = dataframe['video'] +  max_num_video
+            max_num_video = dataframe_max_video
             dataframes.append(dataframe)
         
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
-
-        if BLINK_DETECTION_MODE == mode:
-            self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int)
-        elif BLINK_COMPLETENESS_MODE == mode:
-            self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
-        elif EYE_STATE_DETECTION_MODE == mode:
-            self.dataframe[self.y_col] = (self.dataframe['blink'] > 0).astype(int)
-
-        self.dataframe['pred'] = 0
         self.dataframe = self.dataframe.rename_axis('idx').sort_values(by=['eye', 'idx'], ascending=[True, True]).reset_index()
-        self.targets = self.dataframe[self.y_col]
-        self.classes = np.unique(self.dataframe[self.y_col])
+
+
+class LSTMDataset(BlinkDataset):
+
+    def __init__(self, paths, transform, videos = None):
+        super().__init__(paths, transform, videos=videos)
+        self.__set_target_column()
+
+
+    def __set_target_column(self):
+        # Must be overrriden in child classes
+        pass
 
     def __len__(self):
         return len(self.dataframe) 
@@ -77,6 +84,24 @@ class LSTMDataset(Dataset):
             sample = self.transform(sample)
 
         return sample, target
+        
+
+class BlinkDetectionLSTMDataset(LSTMDataset):
+
+    def __set_target_column(self):
+        self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int)
+
+
+class BlinkCompletenessDetectionLSTMDataset(LSTMDataset):
+
+    def __set_target_column(self):
+        self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
+
+
+class EyeStateDetectionSingleInputLSTMDataset(LSTMDataset):
+
+    def __set_target_column(self):
+        self.dataframe[self.y_col] = (self.dataframe['blink'] > 0).astype(int)
 
 
 class EyeStateDetectionLSTMDataset(Dataset):
@@ -87,7 +112,7 @@ class EyeStateDetectionLSTMDataset(Dataset):
         self.transform = transform
 
         dataframes = []
-        maxNumVideo = 0
+        max_num_video = 0
         for root in paths:
             csvFilePath = root + '.csv'
             dataframe = pd.read_csv(csvFilePath)
@@ -99,9 +124,9 @@ class EyeStateDetectionLSTMDataset(Dataset):
             dataframe['complete_path'] = completePaths
             if videos != None:
                 dataframe = dataframe[dataframe.video.isin(videos)]
-            dataframeMaxVideo = dataframe['video'].max()
-            dataframe['video'] = dataframe['video'] +  maxNumVideo
-            maxNumVideo = dataframeMaxVideo
+            dataframe_max_video = dataframe['video'].max()
+            dataframe['video'] = dataframe['video'] +  max_num_video
+            max_num_video = dataframe_max_video
             dataframes.append(dataframe)
         
         self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
@@ -146,98 +171,11 @@ class EyeStateDetectionLSTMDataset(Dataset):
 
         return (left_eye, right_eye), target
 
-class SiameseCUDADataset(Dataset):
+
+class SiameseDataset(BlinkDataset):
 
     def __init__(self, paths, transform, videos = None ):
-        self.x_col = 'complete_path'
-        self.y_col = 'blink'
-        #self.y_col = 'target'
-        self.transform = transform
-        dataframes = []
-        for root in paths:
-            csvFilePath = root + '.csv'
-            dataframe = pd.read_csv(csvFilePath)
-            dataframe['base_path'] = root
-
-            completePaths = []
-            for idx, row in dataframe.iterrows():
-                completePaths.append(os.path.join(row['base_path'], row['frame']))
-            dataframe['complete_path'] = completePaths
-            if videos != None:
-                dataframe = dataframe[dataframe.video.isin(videos)]
-            dataframes.append(dataframe)
-        
-        self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
-        #self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
-        self.targets = self.dataframe[self.y_col]
-        self.classes = np.unique(self.dataframe[self.y_col])
-        self.samples = list(map(self.__load_img_in_cuda,self.dataframe['complete_path']))
-
-    def __load_img_in_cuda(self, image_file):
-        image = Image.open(image_file)
-        return image.cuda()
-
-    def __len__(self):
-        return len(self.dataframe)
-
-    def getDataframeRow(self, idx):
-        return self.dataframe.iloc[idx]
-
-    def getDataframe(self):
-        return self.dataframe
-    
-    def __getitem__(self, idx):
-        target = int(rand.random_sample() > POSITIVE_NEGATIVE_RATIO)
-
-        y = self.dataframe[self.y_col].to_numpy().astype(int)
-
-        class1 = rand.choice(self.classes)
-        if target == SAME_CLASS:
-            class2 = class1
-        else:
-            class2 = rand.choice(list((set(self.classes) - {class1})))
-
-        idx1 = rand.choice(np.argwhere(y == class1).flatten())
-        selectedRow1 = self.dataframe.iloc[idx1]
-
-        idx2 = rand.choice(np.argwhere(y == class2).flatten())
-        selectedRow2 = self.dataframe.iloc[idx2]
-
-        #sample1 = Image.open(selectedRow1['complete_path'])
-        #sample2 = Image.open(selectedRow2['complete_path'])
-        sample1 = self.samples[idx1]
-        sample2 = self.samples[idx2] 
-
-
-        if self.transform is not None:
-            sample1 = self.transform(sample1)
-            sample2 = self.transform(sample2)
-
-        return (sample1, sample2), target.cuda()
-
-class SiameseDataset(Dataset):
-
-    def __init__(self, paths, transform, videos = None ):
-        self.x_col = 'complete_path'
-        self.y_col = 'blink'
-        #self.y_col = 'target'
-        self.transform = transform
-        dataframes = []
-        for root in paths:
-            csvFilePath = root + '.csv'
-            dataframe = pd.read_csv(csvFilePath)
-            dataframe['base_path'] = root
-
-            completePaths = []
-            for idx, row in dataframe.iterrows():
-                completePaths.append(os.path.join(row['base_path'], row['frame']))
-            dataframe['complete_path'] = completePaths
-            if videos != None:
-                dataframe = dataframe[dataframe.video.isin(videos)]
-            dataframes.append(dataframe)
-        
-        self.dataframe = pd.concat(dataframes, ignore_index=True, sort=False)
-        #self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
+        super().__init__(paths, transform,y_col='blink', videos=videos)
         self.targets = self.dataframe[self.y_col]
         self.classes = np.unique(self.dataframe[self.y_col])
 

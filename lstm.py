@@ -86,17 +86,13 @@ class LSTMModel(ABC):
         self.log_file.write(self.LOG_FILE_HEADER)
 
 
-    def __initialize_train_loader(self):
-        self.train_set = dataloader.LSTMDataset(
-                self.train_dataset_dirs, self.TRAIN_TRANSFORM, mode=self.eval_mode)
-        self.train_loader = DataLoader(
-            self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
+    @abstractmethod
+    def initialize_train_loader(self):
+        pass
 
-    def __initialize_evaluation_loader(self):
-        self.test_set = dataloader.LSTMDataset(
-                self.test_dataset_dirs, self.TEST_TRANSFORM, mode=self.eval_mode)
-        self.test_loader = DataLoader(
-            self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
+    @abstractmethod
+    def initialize_evaluation_loader(self):
+        pass
 
     def __initialize_cnn_model(self):
         self.cnn_model = network.SiameseNetV2(self.dims)
@@ -316,6 +312,18 @@ class BlinkDetectionLSTMModel(LSTMModel):
     def __init__(self, params, cuda):
         self.num_classes = 2
         super().__init__(params, cuda)
+    
+    def initialize_train_loader(self):
+        self.train_set = dataloader.BlinkDetectionLSTMDataset(
+                self.train_dataset_dirs, self.TRAIN_TRANSFORM)
+        self.train_loader = DataLoader(
+            self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
+
+    def initialize_evaluation_loader(self):
+        self.test_set = dataloader.BlinkDetectionLSTMDataset(
+                self.test_dataset_dirs, self.TEST_TRANSFORM)
+        self.test_loader = DataLoader(
+            self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
 
     def evaluate_results(self, dataframe):
@@ -329,13 +337,13 @@ class EyeStateDetectionLSTMModel(LSTMModel):
         self.num_classes = 2
         super().__init__(params, cuda)
 
-    def __initialize_train_loader(self):
+    def initialize_train_loader(self):
         self.train_set = dataloader.EyeStateDetectionLSTMDataset(
             self.train_dataset_dirs, self.TRAIN_TRANSFORM)
         self.train_loader = DataLoader(
             self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
-    def __initialize_evaluation_loader(self):
+    def initialize_evaluation_loader(self):
         self.test_set = dataloader.EyeStateDetectionLSTMDataset(
             self.test_dataset_dirs, self.TEST_TRANSFORM)
         self.test_loader = DataLoader(
@@ -387,6 +395,18 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
     
     def evaluate_results(self, dataframe):
         return evaluatePartialBlinks(dataframe)
+    
+    def initialize_train_loader(self):
+        self.train_set = dataloader.BlinkCompletenessDetectionLSTMDataset(
+                self.train_dataset_dirs, self.TRAIN_TRANSFORM)
+        self.train_loader = DataLoader(
+            self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
+
+    def initialize_evaluation_loader(self):
+        self.test_set = dataloader.BlinkCompletenessDetectionLSTMDataset(
+                self.test_dataset_dirs, self.TEST_TRANSFORM)
+        self.test_loader = DataLoader(
+            self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
     
     def __eval_training(self, epoch, train_stats, eval_stats):
