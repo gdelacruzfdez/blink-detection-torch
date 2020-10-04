@@ -372,12 +372,14 @@ class EyeStateDetectionLSTMModel(LSTMModel):
         return concatenation
 
     def __evaluate_results(self, dataframe):
-        blinksPerFrames = dataframe.groupby(['frameId', 'video'])
-        blinks = blinksPerFrames.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
-        preds = blinksPerFrames.pred.apply(lambda x: max(x.values.tolist()))
-        print(metrics.classification_report(blinks, preds, target_names=['Open', 'Closed']))
-        print(metrics.confusion_matrix(blinks, preds))
-        precisionRecallF1 = metrics.precision_recall_fscore_support(blinks, preds, average='binary')
+        #blinksPerFrames = dataframe.groupby(['frameId', 'video'])
+        preds = dataframe['pred']
+        targets = dataframe['targets']
+        #blinks = blinksPerFrames.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
+        #preds = blinksPerFrames.pred.apply(lambda x: max(x.values.tolist()))
+        print(metrics.classification_report(targets, preds, target_names=['Open', 'Closed']))
+        print(metrics.confusion_matrix(preds, preds))
+        precisionRecallF1 = metrics.precision_recall_fscore_support(targets, preds, average='binary')
         print(precisionRecallF1)
         results = {'f1': precisionRecallF1[2], 'precision':precisionRecallF1[0], 'recall': precisionRecallF1[1], 'fp':FP, 'fn': FN, 'tp':TP, db: 0}
         return results
