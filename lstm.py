@@ -261,9 +261,9 @@ class LSTMModel(ABC):
         if self.cuda:
             self.lstm_model = self.lstm_model.cuda()
         results = self.__test_epoch(True)
-        self.__print_eval_results(results)
+        self.print_eval_results(results)
     
-    def __print_eval_results(self, results):
+    def print_eval_results(self, results):
         print('Eval results => F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(
             results['f1'], results['precision'], results['recall'], results['tp'], results['fp'], results['fn']))
 
@@ -281,6 +281,7 @@ class LSTMModel(ABC):
                 self.best_epoch = epoch
                 torch.save(self.lstm_model.state_dict(),
                            self.base_file_name + '.pt')
+            print('Current best model -> Epoch {} F1: {}'.format(self.best_epoch, self.best_f1))
 
         self.log_file.close()
 

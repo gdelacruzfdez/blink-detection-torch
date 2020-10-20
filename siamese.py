@@ -178,6 +178,7 @@ class SiameseModel:
                 self.best_f1 = self.current_f1
                 self.best_epoch = epoch
                 torch.save(self.model.state_dict(), self.base_file_name + '.pt')
+            print('Best model til now: Epoch {} => {}'.format(self.best_epoch, self.best_f1))
         self.log_file.close()
     
     def hyperparameter_tunning(self):
