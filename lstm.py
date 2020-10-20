@@ -3,6 +3,7 @@ import dataloader
 import network
 import numpy as np
 import torch
+import evaluator
 from sklearn import metrics
 from tqdm import tqdm
 from PIL import Image
@@ -36,6 +37,8 @@ class LSTMModel(ABC):
 
     def __init__(self, params, cuda):
         self.params = params
+        self.cuda = cuda
+
         self.batch_size = params.get('batch_size')
         self.dims = params.get('dims')
         self.cnn_model_file = params.get('cnn_model_file')
@@ -47,7 +50,6 @@ class LSTMModel(ABC):
         self.eval_mode = params.get('eval_mode')
         self.lr = params.get('lr')
 
-        self.cuda = cuda
         if 'train_dataset_dirs' in params:
             self.train_dataset_dirs = seq(params.get('train_dataset_dirs'))\
                 .map(lambda x: "{}/{}".format(params.get('datasets_base_path'), x))
@@ -249,11 +251,7 @@ class LSTMModel(ABC):
         dataframe['targets'] = all_targets
         if evaluation:
             dataframe.to_csv('-'.join(self.params.get('test_dataset_dirs')) + '-' + self.eval_mode + '.csv', index=False)
-        return self.evaluate_results(dataframe)
-
-    @abstractmethod
-    def evaluate_results(self, dataframe):
-        pass
+        return self.evaluator.evaluate(dataframe)
 
     def eval(self):
         self.lstm_model.load_state_dict(torch.load(self.lstm_model_file))
@@ -313,6 +311,7 @@ class BlinkDetectionLSTMModel(LSTMModel):
     def __init__(self, params, cuda):
         self.num_classes = 2
         super().__init__(params, cuda)
+        self.evaluator = evaluator.BlinkDetectionEvaluator()
     
     def initialize_train_loader(self):
         self.train_set = dataloader.BlinkDetectionLSTMDataset(
@@ -327,17 +326,12 @@ class BlinkDetectionLSTMModel(LSTMModel):
             self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
 
-    def evaluate_results(self, dataframe):
-        stats = evaluate(dataframe)
-        return evaluate(dataframe)
-
-
-
 class EyeStateDetectionLSTMModel(LSTMModel):
 
     def __init__(self, params, cuda):
         self.num_classes = 2
         super().__init__(params, cuda)
+        self.evaluator = evaluator.EyeStateDetectionEvaluator()
 
     def initialize_train_loader(self):
         self.train_set = dataloader.EyeStateDetectionLSTMDataset(
@@ -370,20 +364,6 @@ class EyeStateDetectionLSTMModel(LSTMModel):
         concatenation = torch.cat((left_eye_features, right_eye_features), 2)
         return concatenation, targets
 
-    def evaluate_results(self, dataframe):
-        #blinksPerFrames = dataframe.groupby(['frameId', 'video'])
-        preds = dataframe['pred']
-        targets = dataframe['targets']
-        #blinks = blinksPerFrames.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
-        #preds = blinksPerFrames.pred.apply(lambda x: max(x.values.tolist()))
-        print(metrics.classification_report(targets, preds, target_names=['Open', 'Closed']))
-        confussion_matrix = metrics.confusion_matrix(targets, preds).ravel()
-        print(confussion_matrix)
-        precisionRecallF1 = metrics.precision_recall_fscore_support(targets, preds, average='binary')
-        print(precisionRecallF1)
-        results = {'f1': precisionRecallF1[2], 'precision':precisionRecallF1[0], 'recall': precisionRecallF1[1], 'fp':confussion_matrix[1], 'fn': confussion_matrix[2], 'tp':confussion_matrix[3], 'db': 0}
-        return results
-
         
 
 
@@ -394,6 +374,8 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
         self.num_classes = 3
         super().__init__(params, cuda)
         self.LOG_FILE_HEADER = 'EPOCH,TRAIN_LOSS,TRAIN_ACCURACY,TRAIN_PRECISION,TRAIN_RECALL,TRAIN_F1,PARTIAL_F1,PARTIAL_PRECISION,PARTIAL_RECALL,PARTIAL_TP,PARTIAL_FP,PARTIAL_TN,PARTIAL_FN,COMPLETE_F1,COMPLETE_PRECISION,COMPLETE_RECALL,COMPLETE_TP,COMPLETE_FP,COMPLETE_TN,COMPLETE_FN'
+        self.evaluator = evaluator.BlinkCompletenessDetectionEvaluator()
+
     
     def evaluate_results(self, dataframe):
         return evaluatePartialBlinks(dataframe)
@@ -453,7 +435,7 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
 def create_lstm_model(params, cuda):
     eval_mode = params.get('eval_mode')
     if 'BLINK_DETECTION_MODE' == eval_mode:
-        return BlinkDetectionLSTMModel(params, cuda)
+        return BlinkDetectionLSTMModel(params,cuda)
     elif 'BLINK_COMPLETENESS_MODE' == eval_mode:
         return BlinkCompletenessDetectionLSTMModel(params, cuda)
     elif 'EYE_STATE_DETECTION_MODE' == eval_mode:
