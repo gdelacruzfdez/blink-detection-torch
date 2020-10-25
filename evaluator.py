@@ -8,6 +8,27 @@ PARTIAL_BLINK = 0
 COMPLETE_BLINK = 1
 
 
+class Blink(object):
+    start = 0
+    end = 0
+    not_visible = False
+    complete_blink = False
+    video = -1
+
+    def __init__(self, start, end, not_visible, complete_blink, video):
+        self.start = start
+        self.end = end
+        self.not_visible = not_visible
+        self.complete_blink = complete_blink
+        self.video = video
+        
+    def __str__(self):
+        return '[ start:{}, end:{}, not_visible:{}, complete_blink:{}, video:{} ]'.format(self.start, self.end, self.not_visible, self.complete_blink, self.video)
+
+    def __repr__(self):
+        return self.__str__()
+
+
 class EvaluatorInterface:
 
     def evaluate(self, dataframe):
@@ -45,11 +66,11 @@ class BlinkEvaluator(EvaluatorInterface):
         all_pred_blinks = []
 
         for i in range(1, num_videos + 1):
-            video_dataframe = dataframe[dataframe['video'] == 1].reset_index()
+            video_dataframe = dataframe[dataframe['video'] == i].reset_index()
             gt_blinks, pred_blinks = self.calculate_blinks_for_video(video_dataframe)
 
-            all_gt_blinks.extend(gt_blinks)
-            all_pred_blinks.extend(pred_blinks)
+            all_gt_blinks.append(gt_blinks)
+            all_pred_blinks.append(pred_blinks)
         
         return all_gt_blinks, all_pred_blinks
 
@@ -120,7 +141,7 @@ class BlinkEvaluator(EvaluatorInterface):
                     i += 1
                     j += 1
                     continue
-            if pred_blinks_copy[i]['end'] < gt_blinks_copy[j]['end']:
+            if pred_blinks_copy[i].end < gt_blinks_copy[j].end:
                 fp_blinks_counter += 1
                 i += 1
             else:
@@ -129,16 +150,16 @@ class BlinkEvaluator(EvaluatorInterface):
 
     def iou(self, blink1, blink2):
         # intervals are 3 digits, middle one tells about the partial-0 / full-1 blink property
-        min = blink1['start']
-        diffMin = blink2['start']-blink1['start']
-        if min > blink2['start']:
-            diffMin = blink1['start']-blink2['start']
-            min = blink2['start']
-        max = blink1['end']
-        diffMax = blink1['end']-blink2['end']
-        if max < blink2['end']:
-            diffMax = blink2['end']-blink1['end']
-            max = blink2['end']
+        min = blink1.start
+        diffMin = blink2.start - blink1.start
+        if min > blink2.start:
+            diffMin = blink1.start - blink2.start
+            min = blink2.start
+        max = blink1.end
+        diffMax = blink1.end - blink2.end
+        if max < blink2.end:
+            diffMax = blink2.end - blink1.end
+            max = blink2.end
         unionCount = max-min-diffMin-diffMax+1
         if unionCount <= 0:
             return 0
@@ -165,19 +186,19 @@ class BlinkEvaluator(EvaluatorInterface):
         while i < len(dataframe):
             if(dataframe.loc[i]['blink_id'] != -1):
                 id = dataframe.loc[i]['blink_id']
-                fullyClosed = False
-                notVisible = False
+                fully_closed = False
+                not_visible = False
                 start = dataframe.loc[i]['frameId']
                 while i < len(dataframe) and dataframe.loc[i]['blink_id'] == id:
                     if dataframe.loc[i]['blink'] == 1:
-                        fullyClosed = True
+                        fully_closed = True
                     if dataframe.loc[i]['NV'] == 1:
-                        notVisible = True
+                        not_visible = True
                     i += 1
                 i -= 1
                 end = dataframe.loc[i]['frameId']
-                blinks.append({'start': start, 'end': end, 'notVisible': notVisible,
-                               'completeBlink': fullyClosed, 'video': dataframe.loc[i]['video']})
+                blink = Blink(start, end, not_visible, fully_closed, dataframe.loc[i]['video'])
+                blinks.append(blink)
             i += 1
         return blinks
 
@@ -186,39 +207,39 @@ class BlinkEvaluator(EvaluatorInterface):
         blinks = []
         while i < len(dataframe):
             if(dataframe.loc[i]['pred'] > 0):
-                fullyClosed = False
-                notVisible = False
+                fully_closed = False
+                not_visible = False
                 start = dataframe.loc[i]['frameId']
                 while i < len(dataframe) and dataframe.loc[i]['pred'] > 0:
                     if dataframe.loc[i]['pred'] == EYE_CLOSED:
-                        fullyClosed = True
+                        fully_closed = True
                     if dataframe.loc[i]['NV'] == 1:
-                        notVisible = True
+                        not_visible = True
                     i += 1
                 i -= 1
                 end = dataframe.loc[i]['frameId']
-                blinks.append({'start': start, 'end': end, 'notVisible': notVisible,
-                               'completeBlink': fullyClosed, 'video': dataframe.loc[i]['video']})
+                blink = Blink(start, end, not_visible, fully_closed, dataframe.loc[i]['video'])
+                blinks.append(blink)
             i += 1
         return blinks
 
     def delete_non_visible_blinks(self, blinks):
         visible_blinks = []
         for blink in blinks:
-            if blink['notVisible'] == False:
+            if blink.not_visible == False:
                 visible_blinks.append(blink)
         return visible_blinks
 
     def merge_double_blinks(self, blinks):
         i = 1
         while i < len(blinks):
-            if blinks[i-1]['end'] == blinks[i]['start'] - 1:
-                blinks[i]['start'] = blinks[i-1]['start']
+            if blinks[i-1].end == blinks[i].start - 1:
+                blinks[i].start = blinks[i-1].start
                 i -= 1
                 blinks.pop(i)
             i += 1
-        if len(blinks) > 1 and blinks[-2]['end'] == blinks[-1]['start']-1:
-            blinks[-1]['start'] = blinks[-1]['start']
+        if len(blinks) > 1 and blinks[-2].end == blinks[-1].start - 1:
+            blinks[-1].start = blinks[-1].start
             blinks.pop(-2)
         return blinks
 
@@ -291,7 +312,7 @@ class BlinkCompletenessDetectionEvaluator(BlinkEvaluator):
         partial = []
         full = []
         for b in blinks:
-            if PARTIAL_BLINK == b['completeBlink']:
+            if PARTIAL_BLINK == b.complete_blink:
                 partial.append(b)
             else:
                 full.append(b)
