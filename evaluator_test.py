@@ -194,6 +194,35 @@ class TestBlinkEvaluator(unittest.TestCase):
         self.assertEqual(fn_partial_video_2, 1)
         self.assertEqual(db_partial_video_2, 2)
 
+    def test_calculate_f1_precision_and_recall(self):
+        tp = 7
+        fp = 1
+        fn = 1
+        db = 8
+
+        f1, precision, recall = self.evaluator.calculate_f1_precision_and_recall(tp, fp, fn, db)
+        self.assertEqual(precision, 0.875)
+        self.assertEqual(recall, 0.875)
+        self.assertEqual(f1, 0.875)
         
+        tp = 2
+        fp = 2
+        fn = 1
+        db = 4
+
+        f1, precision, recall = self.evaluator.calculate_f1_precision_and_recall(tp, fp, fn, db)
+        self.assertEqual(precision, 0.5)
+        self.assertEqual(recall, 2/3)
+        self.assertEqual(f1, 2* (2/3) * 0.5 /((2/3) + 0.5 ))
+        
+        tp = 3
+        fp = 1
+        fn = 2
+        db = 4
+
+        f1, precision, recall = self.evaluator.calculate_f1_precision_and_recall(tp, fp, fn, db)
+        self.assertEqual(precision, 0.75)
+        self.assertEqual(recall, 0.6)
+        self.assertEqual(f1, 2* 0.6 * 0.75 /(0.6 + 0.75 ))
 
 
