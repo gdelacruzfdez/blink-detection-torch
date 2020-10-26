@@ -1,5 +1,6 @@
 import unittest
 import pandas as pd
+from functional import seq
 
 import evaluator
 
@@ -8,19 +9,49 @@ class TestBlinkEvaluator(unittest.TestCase):
     def setUp(self):
         self.evaluator = evaluator.BlinkEvaluator()
         self.dataframe = pd.read_csv('test_dataframe.csv')
-        self.blinks_video_1 = [
+        self.raw_blinks_video = [
+        [
             evaluator.Blink(1,  4, False, False, 1), 
             evaluator.Blink(6, 7, False, True, 1), 
             evaluator.Blink(8, 10, False, True, 1), 
             evaluator.Blink(13, 14, True, False, 1), 
             evaluator.Blink(17, 19, False, True, 1)
-        ]
-        self.blinks_video_2= [
+        ],
+        [
             evaluator.Blink(0, 1, False, True, 2), 
             evaluator.Blink(4, 7, False, False, 2), 
             evaluator.Blink(11, 14, False, False, 2), 
             evaluator.Blink(18, 21, False, True, 2), 
             evaluator.Blink(24, 27, False, True, 2), 
+        ]]
+        self.processed_blinks = [
+        [
+            evaluator.Blink(1,  4, False, False, 1), 
+            evaluator.Blink(6, 10, False, True, 1), 
+            evaluator.Blink(17, 19, False, True, 1)
+        ],
+        [
+            evaluator.Blink(0, 1, False, True, 2), 
+            evaluator.Blink(4, 7, False, False, 2), 
+            evaluator.Blink(11, 14, False, False, 2), 
+            evaluator.Blink(18, 21, False, True, 2), 
+            evaluator.Blink(24, 27, False, True, 2), 
+        ]
+        ]
+        self.predicted_blinks = [
+        [
+            evaluator.Blink(0,  2, False, False, 1), 
+            evaluator.Blink(6,  6, False, False, 1), 
+            evaluator.Blink(16,  18, False, True, 1), 
+        ],
+        [
+            evaluator.Blink(0,  1, False, True, 2), 
+            evaluator.Blink(3,  7, False, False, 2), 
+            evaluator.Blink(10,  14, False, True, 2), 
+            evaluator.Blink(17,  21, False, True, 2), 
+            evaluator.Blink(23,  26, False, False, 2), 
+
+        ]
         ]
 
     def test_separate_left_right_eyes(self):
@@ -79,24 +110,89 @@ class TestBlinkEvaluator(unittest.TestCase):
             self.assertEqual(len(left_blinks), num_total_blinks_per_video[video])
     
     def test_delete_non_visible_blinks(self):
-        self.assertEqual(len(self.blinks_video_1), 5)
-        gt_visible_blinks = list(filter(lambda blink: not blink.not_visible, self.blinks_video_1))
-        pred_visible_blinks = self.evaluator.delete_non_visible_blinks(self.blinks_video_1)
+        self.assertEqual(len(self.raw_blinks_video[0]), 5)
+        gt_visible_blinks = list(filter(lambda blink: not blink.not_visible, self.raw_blinks_video[0]))
+        pred_visible_blinks = self.evaluator.delete_non_visible_blinks(self.raw_blinks_video[0])
         
         self.assertEqual(len(gt_visible_blinks), len(pred_visible_blinks))
 
     def test_merge_double_blinks(self):
-        merged_blinks = self.evaluator.merge_double_blinks(self.blinks_video_1)
+        merged_blinks = self.evaluator.merge_double_blinks(self.raw_blinks_video[0])
         self.assertEqual(len(merged_blinks), 4)
         merged_blink = merged_blinks[1]
         self.assertEqual(merged_blink.start, 6)
         self.assertEqual(merged_blink.end, 10)
 
     def test_calculate_global_confussion_matrix(self):
-       pass 
+        tp_all, fp_all, fn_all, db_all = self.evaluator.calculate_global_confussion_matrix(self.processed_blinks, self.predicted_blinks)
+        self.assertEqual(tp_all, 7)
+        self.assertEqual(fp_all, 1)
+        self.assertEqual(fn_all, 1)
+        self.assertEqual(db_all, 8)
+
+        complete_processed_blinks = seq(self.processed_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: blink.complete_blink).to_list()).to_list()
+        partial_processed_blinks = seq(self.processed_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: not blink.complete_blink).to_list()).to_list()
+
+        complete_pred_blinks = seq(self.predicted_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: blink.complete_blink).to_list()).to_list()
+        partial_pred_blinks = seq(self.predicted_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: not blink.complete_blink).to_list()).to_list()
+
+        tp_complete_all, fp_complete_all, fn_complete_all, db_complete_all = self.evaluator.calculate_global_confussion_matrix(complete_processed_blinks, complete_pred_blinks)
+        tp_partial_all, fp_partial_all, fn_partial_all, db_partial_all = self.evaluator.calculate_global_confussion_matrix(partial_processed_blinks, partial_pred_blinks)
+
+        self.assertEqual(tp_complete_all, 3)
+        self.assertEqual(fp_complete_all, 1)
+        self.assertEqual(fn_complete_all, 2)
+        self.assertEqual(db_complete_all, 4)
+
+        self.assertEqual(tp_partial_all, 2)
+        self.assertEqual(fp_partial_all, 2)
+        self.assertEqual(fn_partial_all, 1)
+        self.assertEqual(db_partial_all, 4)
+
+    def test_calculate_video_confussion_matrix(self):
+        tp_video_1, fp_video_1, fn_video_1, db_video_1 = self.evaluator.calculate_video_confussion_matrix(self.processed_blinks[0], self.predicted_blinks[0])
+        tp_video_2, fp_video_2, fn_video_2, db_video_2 = self.evaluator.calculate_video_confussion_matrix(self.processed_blinks[1], self.predicted_blinks[1])
 
 
+        self.assertEqual(tp_video_1, 2)
+        self.assertEqual(fp_video_1, 1)
+        self.assertEqual(fn_video_1, 1)
+        self.assertEqual(db_video_1, 3)
+        
+        self.assertEqual(tp_video_2, 5)
+        self.assertEqual(fp_video_2, 0)
+        self.assertEqual(fn_video_2, 0)
+        self.assertEqual(db_video_2, 5)
+        
+        complete_processed_blinks = seq(self.processed_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: blink.complete_blink).to_list()).to_list()
+        partial_processed_blinks = seq(self.processed_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: not blink.complete_blink).to_list()).to_list()
 
+        complete_pred_blinks = seq(self.predicted_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: blink.complete_blink).to_list()).to_list()
+        partial_pred_blinks = seq(self.predicted_blinks).map(lambda video_blinks: seq(video_blinks).filter(lambda blink: not blink.complete_blink).to_list()).to_list()
+        
+        tp_complete_video_1, fp_complete_video_1, fn_complete_video_1, db_complete_video_1 = self.evaluator.calculate_video_confussion_matrix(complete_processed_blinks[0],complete_pred_blinks[0])
+        self.assertEqual(tp_complete_video_1, 1)
+        self.assertEqual(fp_complete_video_1, 0)
+        self.assertEqual(fn_complete_video_1, 1)
+        self.assertEqual(db_complete_video_1, 1)
+
+        tp_complete_video_2, fp_complete_video_2, fn_complete_video_2, db_complete_video_2 = self.evaluator.calculate_video_confussion_matrix(complete_processed_blinks[1],complete_pred_blinks[1])
+        self.assertEqual(tp_complete_video_2, 2)
+        self.assertEqual(fp_complete_video_2, 1)
+        self.assertEqual(fn_complete_video_2, 1)
+        self.assertEqual(db_complete_video_2, 3)
+
+        tp_partial_video_1, fp_partial_video_1, fn_partial_video_1, db_partial_video_1 = self.evaluator.calculate_video_confussion_matrix(partial_processed_blinks[0],partial_pred_blinks[0])
+        self.assertEqual(tp_partial_video_1, 1)
+        self.assertEqual(fp_partial_video_1, 1)
+        self.assertEqual(fn_partial_video_1, 0)
+        self.assertEqual(db_partial_video_1, 2)
+
+        tp_partial_video_2, fp_partial_video_2, fn_partial_video_2, db_partial_video_2 = self.evaluator.calculate_video_confussion_matrix(partial_processed_blinks[1],partial_pred_blinks[1])
+        self.assertEqual(tp_partial_video_2, 1)
+        self.assertEqual(fp_partial_video_2, 1)
+        self.assertEqual(fn_partial_video_2, 1)
+        self.assertEqual(db_partial_video_2, 2)
 
         
 
