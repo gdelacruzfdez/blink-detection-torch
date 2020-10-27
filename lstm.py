@@ -248,7 +248,7 @@ class LSTMModel(ABC):
         predictions = predictions[:len(dataframe)]
         all_targets = all_targets[:len(dataframe)]
         dataframe['pred'] = predictions
-        dataframe['targets'] = all_targets
+        dataframe['target'] = all_targets
         if evaluation:
             dataframe.to_csv('-'.join(self.params.get('test_dataset_dirs')) + '-' + self.eval_mode + '.csv', index=False)
         return self.evaluator.evaluate(dataframe)

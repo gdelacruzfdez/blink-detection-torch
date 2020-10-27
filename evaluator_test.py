@@ -4,6 +4,73 @@ from functional import seq
 
 import evaluator
 
+class TestBlinkDetectionEvaluator(unittest.TestCase):
+
+    def setUp(self):
+        self.evaluator = evaluator.BlinkDetectionEvaluator()
+        self.dataframe = pd.read_csv('test_dataframe.csv')
+
+    def test_evaluate(self):
+        results = self.evaluator.evaluate(self.dataframe)
+
+        self.assertEqual(results['tp'], 14)
+        self.assertEqual(results['fp'], 2)
+        self.assertEqual(results['fn'], 2)
+        self.assertEqual(results['db'], 16)
+        self.assertEqual(results['f1'], 0.875)
+        self.assertEqual(results['precision'], 0.875)
+        self.assertEqual(results['recall'], 0.875)
+
+class TestBlinkCompletenessDetectionEvaluator(unittest.TestCase):
+
+    def setUp(self):
+        self.evaluator = evaluator.BlinkCompletenessDetectionEvaluator()
+        self.dataframe = pd.read_csv('test_dataframe.csv')
+
+    def test_evaluate(self):
+        results_partial, results_complete = self.evaluator.evaluate(self.dataframe)
+
+        self.assertEqual(results_partial['tp'], 4)
+        self.assertEqual(results_partial['fp'], 4)
+        self.assertEqual(results_partial['fn'], 2)
+        self.assertEqual(results_partial['db'], 8)
+        self.assertEqual(results_partial['f1'], 2 * (2/3) * 0.5 /((2/3) + 0.5 ) )
+        self.assertEqual(results_partial['precision'], 0.5)
+        self.assertEqual(results_partial['recall'], 2/3)
+
+        self.assertEqual(results_complete['tp'], 6)
+        self.assertEqual(results_complete['fp'], 2)
+        self.assertEqual(results_complete['fn'], 4)
+        self.assertEqual(results_complete['db'], 8)
+        self.assertEqual(results_complete['f1'], 2 * 0.6 * 0.75 / ( 0.6 + 0.75 ) )
+        self.assertEqual(results_complete['precision'], 0.75)
+        self.assertEqual(results_complete['recall'], 0.6)
+
+class TestEyeStateDetectionEvaluator(unittest.TestCase):
+
+    def setUp(self):
+        self.evaluator = evaluator.EyeStateDetectionEvaluator()
+        self.dataframe = pd.read_csv('test_dataframe.csv')
+        self.dataframe['target'] = (self.dataframe['target'] > 0).astype(int)
+        self.dataframe['pred'] = (self.dataframe['pred'] > 0).astype(int)
+    
+    def test_evaluate(self):
+        results = self.evaluator.evaluate(self.dataframe)
+    
+        tp = 44
+        fp = 12
+        fn = 16
+        precision = tp/(tp+fp)
+        recall = tp/ (tp+fn)
+        f1 = 2 * precision * recall /(precision + recall)
+        self.assertEqual(results['tp'], tp)
+        self.assertEqual(results['fp'], fp)
+        self.assertEqual(results['fn'], fn)
+        self.assertEqual(results['f1'], f1)
+        self.assertEqual(results['precision'], precision)
+        self.assertEqual(results['recall'], recall)
+
+
 class TestBlinkEvaluator(unittest.TestCase):
 
     def setUp(self):
@@ -213,7 +280,7 @@ class TestBlinkEvaluator(unittest.TestCase):
         f1, precision, recall = self.evaluator.calculate_f1_precision_and_recall(tp, fp, fn, db)
         self.assertEqual(precision, 0.5)
         self.assertEqual(recall, 2/3)
-        self.assertEqual(f1, 2* (2/3) * 0.5 /((2/3) + 0.5 ))
+        self.assertEqual(f1, 2 * (2/3) * 0.5 /((2/3) + 0.5 ))
         
         tp = 3
         fp = 1
@@ -223,6 +290,6 @@ class TestBlinkEvaluator(unittest.TestCase):
         f1, precision, recall = self.evaluator.calculate_f1_precision_and_recall(tp, fp, fn, db)
         self.assertEqual(precision, 0.75)
         self.assertEqual(recall, 0.6)
-        self.assertEqual(f1, 2* 0.6 * 0.75 /(0.6 + 0.75 ))
+        self.assertEqual(f1, 2 * 0.6 * 0.75 / ( 0.6 + 0.75 ))
 
 

@@ -276,10 +276,11 @@ class BlinkCompletenessDetectionEvaluator(BlinkEvaluator):
         gt_left_blinks, pred_left_blinks = self.extract_blinks_per_video(left_eyes)
         gt_right_blinks, pred_right_blinks = self.extract_blinks_per_video(right_eyes)
 
-        gt_partial_left_blinks, gt_full_left_blinks = self.divide_partial_and_full_blinks(gt_left_blinks)
-        pred_partial_left_blinks, pred_full_left_blinks = self.divide_partial_and_full_blinks(pred_left_blinks)
-        gt_partial_right_blinks, gt_full_right_blinks = self.divide_partial_and_full_blinks(gt_right_blinks)
-        pred_partial_right_blinks, pred_full_right_blinks = self.divide_partial_and_full_blinks(pred_right_blinks)
+
+        gt_partial_left_blinks, gt_full_left_blinks = self.divide_partial_and_full_blinks_per_video(gt_left_blinks)
+        pred_partial_left_blinks, pred_full_left_blinks = self.divide_partial_and_full_blinks_per_video(pred_left_blinks)
+        gt_partial_right_blinks, gt_full_right_blinks = self.divide_partial_and_full_blinks_per_video(gt_right_blinks)
+        pred_partial_right_blinks, pred_full_right_blinks = self.divide_partial_and_full_blinks_per_video(pred_right_blinks)
 
         tp_partial_left, fp_partial_left, fn_partial_left, db_partial_left = self.calculate_global_confussion_matrix(gt_partial_left_blinks, pred_partial_left_blinks)
         tp_full_left, fp_full_left, fn_full_left, db_full_left = self.calculate_global_confussion_matrix(gt_full_left_blinks, pred_full_left_blinks)
@@ -308,6 +309,15 @@ class BlinkCompletenessDetectionEvaluator(BlinkEvaluator):
                     'recall': recall_full, 'tp': tp_full, 'fp': fp_full, 'fn': fn_full, 'db': db_full}
         return ret_dict_partial, ret_dict_full
 
+    def divide_partial_and_full_blinks_per_video(self, list_of_blinks_per_video):
+        list_of_partial_blinks_per_video = []
+        list_of_complete_blinks_per_video = []
+        for video_blinks in list_of_blinks_per_video:
+            partial_blinks, complete_blinks = self.divide_partial_and_full_blinks(video_blinks)
+            list_of_partial_blinks_per_video.append(partial_blinks)
+            list_of_complete_blinks_per_video.append(complete_blinks)
+        return list_of_partial_blinks_per_video, list_of_complete_blinks_per_video
+
     def divide_partial_and_full_blinks(self, blinks):
         partial = []
         full = []
@@ -323,7 +333,7 @@ class EyeStateDetectionEvaluator(EvaluatorInterface):
 
     def evaluate(self, dataframe):
         preds = dataframe['pred']
-        targets = dataframe['targets']
+        targets = dataframe['target']
         print(metrics.classification_report(targets, preds, target_names=['Open', 'Closed']))
         confussion_matrix = metrics.confusion_matrix(targets, preds).ravel()
         print(confussion_matrix)
