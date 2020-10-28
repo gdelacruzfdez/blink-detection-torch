@@ -396,7 +396,7 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
         self.current_f1 = eval_stats_partial['f1'] + eval_stats_complete['f1']
         print('Epoch: {}/{}, Partial => F1:  {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(
             epoch, self.epochs, eval_stats_partial['f1'], eval_stats_partial['precision'], eval_stats_partial['recall'], eval_stats_partial['tp'], eval_stats_partial['fp'], eval_stats_partial['fn']))
-        print('Epoch: {}/{}, Complete => F1: {:.4f} | Precision: {:.4f} | {:.4f} | TP: {} | FP:  {}'.format(
+        print('Epoch: {}/{}, Complete => F1: {:.4f} | Precision: {:.4f} | Recall: {:.4f} | TP: {} | FP: {} | FN: {}'.format(
             epoch, self.epochs, eval_stats_complete['f1'], eval_stats_complete['precision'], eval_stats_complete['recall'], eval_stats_complete['tp'], eval_stats_complete['fp'], eval_stats_complete['fn']))
         self.log_file.write('{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n'
                             .format(epoch,
