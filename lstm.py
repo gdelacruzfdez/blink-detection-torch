@@ -35,9 +35,10 @@ class LSTMModel(ABC):
                              std=[0.229, 0.224, 0.225])
     ])
 
-    def __init__(self, params, cuda):
+    def __init__(self, params, evaluator, cuda):
         self.params = params
         self.cuda = cuda
+        self.evaluator = evaluator
 
         self.batch_size = params.get('batch_size')
         self.dims = params.get('dims')
@@ -310,8 +311,7 @@ class BlinkDetectionLSTMModel(LSTMModel):
 
     def __init__(self, params, cuda):
         self.num_classes = 2
-        super().__init__(params, cuda)
-        self.evaluator = evaluator.BlinkDetectionEvaluator()
+        super().__init__(params, evaluator.BlinkDetectionEvaluator(), cuda)
     
     def initialize_train_loader(self):
         self.train_set = dataloader.BlinkDetectionLSTMDataset(
@@ -330,8 +330,7 @@ class EyeStateDetectionLSTMModel(LSTMModel):
 
     def __init__(self, params, cuda):
         self.num_classes = 2
-        super().__init__(params, cuda)
-        self.evaluator = evaluator.EyeStateDetectionEvaluator()
+        super().__init__(params, evaluator.EyeStateDetectionEvaluator(), cuda)
 
     def initialize_train_loader(self):
         self.train_set = dataloader.EyeStateDetectionLSTMDataset(
@@ -372,9 +371,8 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
 
     def __init__(self, params, cuda):
         self.num_classes = 3
-        super().__init__(params, cuda)
+        super().__init__(params,evaluator.BlinkCompletenessDetectionEvaluator(), cuda)
         self.LOG_FILE_HEADER = 'EPOCH,TRAIN_LOSS,TRAIN_ACCURACY,TRAIN_PRECISION,TRAIN_RECALL,TRAIN_F1,PARTIAL_F1,PARTIAL_PRECISION,PARTIAL_RECALL,PARTIAL_TP,PARTIAL_FP,PARTIAL_TN,PARTIAL_FN,COMPLETE_F1,COMPLETE_PRECISION,COMPLETE_RECALL,COMPLETE_TP,COMPLETE_FP,COMPLETE_TN,COMPLETE_FN'
-        self.evaluator = evaluator.BlinkCompletenessDetectionEvaluator()
 
     
     def evaluate_results(self, dataframe):

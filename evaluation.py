@@ -10,7 +10,6 @@ COMPLETE_BLINK = 1
 
 def evaluate(dataframe):
     results = extractBlinks(dataframe)
-    print('EVALUATE',results)
     return results
 
 
