@@ -266,6 +266,32 @@ class BlinkDetectionEvaluator(BlinkEvaluator):
                     'recall': recall, 'tp': tp, 'fp': fp, 'fn': fn, 'db': db}
         return ret_dict
 
+    def extract_blinks_per_video(self, dataframe):
+        num_videos = dataframe['video'].max()
+        
+        all_gt_blinks = []
+        all_pred_blinks = []
+
+        for i in range(1, num_videos + 1):
+            video_dataframe = dataframe[dataframe['video'] == i].reset_index()
+            gt_blinks, pred_blinks = self.calculate_blinks_for_video(video_dataframe)
+
+            all_gt_blinks.append(gt_blinks)
+            all_pred_blinks.append(pred_blinks)
+        
+        return all_gt_blinks, all_pred_blinks
+    
+    def calculate_blinks_for_video(self, video_dataframe):
+
+        gt_blinks = self.convert_annotation_to_blinks(video_dataframe)
+        gt_blinks = self.delete_non_visible_blinks(gt_blinks)
+        gt_blinks = self.merge_double_blinks(gt_blinks)
+
+        pred_blinks = self.convert_predictions_to_blinks(video_dataframe)
+        pred_blinks = self.delete_non_visible_blinks(pred_blinks)
+        pred_blinks = self.merge_double_blinks(pred_blinks)
+        
+        return gt_blinks, pred_blinks
         
 
 
@@ -273,19 +299,14 @@ class BlinkCompletenessDetectionEvaluator(BlinkEvaluator):
 
     def evaluate(self, dataframe):
         left_eyes, right_eyes = self.separate_left_right_eyes(dataframe)
-        gt_left_blinks, pred_left_blinks = self.extract_blinks_per_video(left_eyes)
-        gt_right_blinks, pred_right_blinks = self.extract_blinks_per_video(right_eyes)
+        partial_gt_left_blinks, complete_gt_left_blinks, partial_pred_left_blinks, complete_pred_left_blinks = self.extract_blinks_per_video(left_eyes)
+        partial_gt_right_blinks, complete_gt_right_blinks, partial_pred_right_blinks, complete_pred_right_blinks = self.extract_blinks_per_video(right_eyes)
 
 
-        gt_partial_left_blinks, gt_full_left_blinks = self.divide_partial_and_full_blinks_per_video(gt_left_blinks)
-        pred_partial_left_blinks, pred_full_left_blinks = self.divide_partial_and_full_blinks_per_video(pred_left_blinks)
-        gt_partial_right_blinks, gt_full_right_blinks = self.divide_partial_and_full_blinks_per_video(gt_right_blinks)
-        pred_partial_right_blinks, pred_full_right_blinks = self.divide_partial_and_full_blinks_per_video(pred_right_blinks)
-
-        tp_partial_left, fp_partial_left, fn_partial_left, db_partial_left = self.calculate_global_confussion_matrix(gt_partial_left_blinks, pred_partial_left_blinks)
-        tp_full_left, fp_full_left, fn_full_left, db_full_left = self.calculate_global_confussion_matrix(gt_full_left_blinks, pred_full_left_blinks)
-        tp_partial_right, fp_partial_right, fn_partial_right, db_partial_right = self.calculate_global_confussion_matrix(gt_partial_right_blinks, pred_partial_right_blinks)
-        tp_full_right, fp_full_right, fn_full_right, db_full_right = self.calculate_global_confussion_matrix(gt_full_right_blinks, pred_full_right_blinks)
+        tp_partial_left, fp_partial_left, fn_partial_left, db_partial_left = self.calculate_global_confussion_matrix(partial_gt_left_blinks, partial_pred_left_blinks)
+        tp_complete_left, fp_complete_left, fn_complete_left, db_complete_left = self.calculate_global_confussion_matrix(complete_gt_left_blinks, complete_pred_left_blinks)
+        tp_partial_right, fp_partial_right, fn_partial_right, db_partial_right = self.calculate_global_confussion_matrix(partial_gt_right_blinks, partial_pred_right_blinks)
+        tp_complete_right, fp_complete_right, fn_complete_right, db_complete_right = self.calculate_global_confussion_matrix(complete_gt_right_blinks, complete_pred_right_blinks)
 
         tp_partial = tp_partial_left + tp_partial_right
         fp_partial = fp_partial_left + fp_partial_right
@@ -293,21 +314,55 @@ class BlinkCompletenessDetectionEvaluator(BlinkEvaluator):
         db_partial = db_partial_left + db_partial_right
 
 
-        tp_full = tp_full_left + tp_full_right
-        fp_full = fp_full_left + fp_full_right
-        fn_full = fn_full_left + fn_full_right
-        db_full = db_full_left + db_full_right
+        tp_complete = tp_complete_left + tp_complete_right
+        fp_complete = fp_complete_left + fp_complete_right
+        fn_complete = fn_complete_left + fn_complete_right
+        db_complete = db_complete_left + db_complete_right
 
         f1_partial, precision_partial, recall_partial = self.calculate_f1_precision_and_recall(tp_partial, fp_partial, fn_partial, db_partial)
-        f1_full, precision_full, recall_full = self.calculate_f1_precision_and_recall(tp_full, fp_full, fn_full, db_full)
+        f1_complete, precision_complete, recall_complete = self.calculate_f1_precision_and_recall(tp_complete, fp_complete, fn_complete, db_complete)
 
 
         ret_dict_partial = {'f1': f1_partial, 'precision': precision_partial,
                     'recall': recall_partial, 'tp': tp_partial, 'fp': fp_partial, 'fn': fn_partial, 'db': db_partial}
 
-        ret_dict_full = {'f1': f1_full, 'precision': precision_full,
-                    'recall': recall_full, 'tp': tp_full, 'fp': fp_full, 'fn': fn_full, 'db': db_full}
-        return ret_dict_partial, ret_dict_full
+        ret_dict_complete = {'f1': f1_complete, 'precision': precision_complete,
+                    'recall': recall_complete, 'tp': tp_complete, 'fp': fp_complete, 'fn': fn_complete, 'db': db_complete}
+        return ret_dict_partial, ret_dict_complete
+    
+    def extract_blinks_per_video(self, dataframe):
+        num_videos = dataframe['video'].max()
+        
+        all_partial_gt_blinks = []
+        all_complete_gt_blinks = []
+        all_partial_pred_blinks = []
+        all_complete_pred_blinks = []
+
+        for i in range(1, num_videos + 1):
+            video_dataframe = dataframe[dataframe['video'] == i].reset_index()
+            partial_gt_blinks, complete_gt_blinks, partial_pred_blinks, complete_pred_blinks = self.calculate_blinks_for_video(video_dataframe)
+
+            all_partial_gt_blinks.append(partial_gt_blinks)
+            all_complete_gt_blinks.append(complete_gt_blinks)
+
+            all_partial_pred_blinks.append(partial_pred_blinks)
+            all_complete_pred_blinks.append(complete_pred_blinks)
+        
+        return all_partial_gt_blinks, all_complete_gt_blinks, all_partial_pred_blinks, all_complete_pred_blinks
+    
+    def calculate_blinks_for_video(self, video_dataframe):
+
+        gt_blinks = self.convert_annotation_to_blinks(video_dataframe)
+        partial_gt_blinks, complete_gt_blinks = self.divide_partial_and_full_blinks(gt_blinks)
+        partial_gt_blinks = self.merge_double_blinks(self.delete_non_visible_blinks(partial_gt_blinks))
+        complete_gt_blinks = self.merge_double_blinks(self.delete_non_visible_blinks(complete_gt_blinks))
+
+        pred_blinks = self.convert_predictions_to_blinks(video_dataframe)
+        partial_pred_blinks, complete_pred_blinks = self.divide_partial_and_full_blinks(pred_blinks)
+        partial_pred_blinks = self.merge_double_blinks(self.delete_non_visible_blinks(partial_pred_blinks))
+        complete_pred_blinks = self.merge_double_blinks(self.delete_non_visible_blinks(complete_pred_blinks))
+        
+        return partial_gt_blinks, complete_gt_blinks, partial_pred_blinks, complete_pred_blinks
 
     def divide_partial_and_full_blinks_per_video(self, list_of_blinks_per_video):
         list_of_partial_blinks_per_video = []
