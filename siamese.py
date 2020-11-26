@@ -42,8 +42,8 @@ class SiameseModel:
     def __init__(self, params, cuda):
         self.params = params
         self.cuda = cuda
-        self.train_videos = None if not 'train_videos' in params else params.get('train_videos').split(',')
-        self.test_videos = None if not 'test_videos' in params else params.get('test_videos').split(',')
+        self.train_videos = None if not 'train_videos' in params else params.get('train_videos')
+        self.test_videos = None if not 'test_videos' in params else params.get('test_videos')
         self.train_dataset_dirs = seq(params.get('train_dataset_dirs'))\
             .map(lambda x: "{}/{}".format(self.params.get('datasets_base_path'), x))
         self.test_dataset_dirs = seq(params.get('test_dataset_dirs'))\

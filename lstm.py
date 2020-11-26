@@ -58,6 +58,9 @@ class LSTMModel(ABC):
         if 'test_dataset_dirs' in params:
             self.test_dataset_dirs = seq(params.get('test_dataset_dirs'))\
                 .map(lambda x: "{}/{}".format(params.get('datasets_base_path'), x))
+        
+        self.train_videos = None if not 'train_videos' in params else params.get('train_videos')
+        self.test_videos = None if not 'test_videos' in params else params.get('test_videos')
 
         self.best_f1 = -1
         self.best_epoch = -1
