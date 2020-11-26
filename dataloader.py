@@ -143,8 +143,15 @@ class EyeStateDetectionLSTMDataset(Dataset):
 
         self.left_eyes = self.dataframe[self.dataframe['eye'] == 'LEFT']
         self.right_eyes = self.dataframe[self.dataframe['eye'] == 'RIGHT']
-        blinks_per_frame = self.dataframe.groupby(['frameId', 'video'])
-        self.targets = blinks_per_frame.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist()))
+        #blinks_per_frame = self.dataframe.groupby(['base_path','video','frameId'])
+        self.dataframe = self.right_eyes
+        #self.targets = blinks_per_frame.blink.apply(lambda x: reduce(lambda a,b: a*b ,x.values.tolist())).values
+        #self.dataframe['targets'] = self.targets
+        self.targets = (self.left_eyes.blink.values * self.right_eyes.blink.values).astype(int)
+        #self.dataframe.to_csv('targets.csv')
+        print(sum(self.targets))
+        print('lens',len(self.left_eyes), len(self.right_eyes), len(self.targets))
+
 
     def __len__(self):
         return len(self.targets) 
@@ -189,6 +196,7 @@ class SiameseDataset(BlinkDataset):
         self.classes = np.unique(self.dataframe[self.y_col])
     
     def set_target_column(self):
+        #self.dataframe[self.y_col] = (self.dataframe['blink_id'].astype(int) > 0).astype(int) + self.dataframe['blink'].astype(int)
         self.dataframe[self.y_col] = self.dataframe['blink'].astype(int)
 
     

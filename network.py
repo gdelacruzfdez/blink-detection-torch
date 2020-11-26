@@ -11,7 +11,12 @@ class EmbeddingNet(nn.Module):
         super().__init__()
         self.model = models.resnet18(pretrained=True)
         num_ftrs = self.model.fc.in_features
+        #self.model.fc = nn.Sequential(
+        #                nn.Dropout(0.5),
+        #                nn.Linear(num_ftrs, num_dims)
+        #                )
         self.model.fc = nn.Linear(num_ftrs, num_dims)
+
 
     def forward(self, x):
         return self.model(x)        

@@ -3,6 +3,7 @@ import dataloader
 import network
 import numpy as np
 import torch
+import loss
 from PIL import Image
 from skorch import NeuralNet
 from functional import seq
@@ -106,7 +107,7 @@ class SiameseModel:
             
             self.optimizer.zero_grad()
             outputs = self.model((samples1, samples2))
-            #outputs = outputs.squeeze(1)
+            #output1, output2 = self.model((samples1, samples2))
             loss = self.criterion(outputs, targets.float())
             loss.backward()
             self.optimizer.step()
@@ -116,6 +117,7 @@ class SiameseModel:
 
         return np.mean(losses)
 
+
     def __test_epoch(self):
         train_embeddings, train_targets = self.__extract_embeddings(self.eval_train_loader)
         test_embeddings, test_targets = self.__extract_embeddings(self.eval_test_loader)
@@ -123,6 +125,7 @@ class SiameseModel:
         nc = NearestCentroid()
         nc.fit(train_embeddings, train_targets)
         predictions = nc.predict(test_embeddings)
+        #classification_report = sklearn.metrics.classification_report(test_targets, predictions, target_names=['Open','Partial','Closed'])
         classification_report = sklearn.metrics.classification_report(test_targets, predictions, target_names=['Open','Closed'])
         classification_metrics = sklearn.metrics.precision_recall_fscore_support(test_targets, predictions, average='macro')
         confussion_matrix = sklearn.metrics.confusion_matrix(test_targets, predictions)

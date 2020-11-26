@@ -14,6 +14,7 @@ from torch.nn import CrossEntropyLoss
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from evaluation import evaluate, evaluatePartialBlinks
+from sklearn.utils.class_weight import compute_class_weight
 from functools import reduce
 from abc import ABC, abstractmethod
 
@@ -111,6 +112,10 @@ class LSTMModel(ABC):
             self.lstm_model = self.lstm_model.cuda()
 
     def __initialize_training_parameters(self):
+        #weights = compute_class_weight('balanced',np.unique(self.train_loader.dataset.targets),self.train_loader.dataset.targets)
+        #weights = [1, 10, 5]
+        #print('WEIGHTS', weights)
+        #weights = torch.FloatTensor(weights).cuda()
         self.criterion = CrossEntropyLoss()
         self.optimizer = Adam(self.lstm_model.parameters(), lr=self.lr)
         self.scheduler = ReduceLROnPlateau(
@@ -140,7 +145,7 @@ class LSTMModel(ABC):
         for batch_idx, data in progress:
             samples, targets = data
 
-            features, targets  = self.__process_samples_through_cnn(samples, targets)
+            features, targets  = self.process_samples_through_cnn(samples, targets)
 
             outputs = self.lstm_model(features)
 
@@ -173,7 +178,7 @@ class LSTMModel(ABC):
             epoch, self.epochs, train_stats['loss'], train_stats['accuracy']))
         return train_stats
 
-    def __process_samples_through_cnn(self, samples, targets):
+    def process_samples_through_cnn(self, samples, targets):
         if self.cuda:
             samples = samples.cuda()
             targets = targets.cuda()
@@ -200,6 +205,8 @@ class LSTMModel(ABC):
 
 
     def __test_epoch(self, evaluation=False):
+        self.lstm_model.eval()
+
         losses = []
         accuracies = []
         TN = FN = TP = FP = 0
@@ -208,16 +215,12 @@ class LSTMModel(ABC):
         predictions = np.array([])
         all_targets = np.array([])
 
-        for batch_idx, data in progress:
-            samples, targets = data
-            if self.cuda:
-                samples = samples.cuda()
-                targets = targets.cuda()
 
+        for batch_idx, data in progress:
             with torch.no_grad():
                 samples, targets = data
 
-                features, targets  = self.__process_samples_through_cnn(samples, targets)
+                features, targets  = self.process_samples_through_cnn(samples, targets)
 
                 outputs = self.lstm_model(features)
 
@@ -357,11 +360,14 @@ class EyeStateDetectionLSTMModel(LSTMModel):
             left_eyes = left_eyes.cuda()
             right_eyes = right_eyes.cuda()
         
-        left_eye_features = super().process_samples_through_cnn(left_eyes, targets)
-        right_eye_features = super().process_samples_through_cnn(right_eyes, targets)
+        #targets_left and targets_right are equal
+        left_eye_features, targets_left = super().process_samples_through_cnn(left_eyes, targets)
+        right_eye_features, targets_right = super().process_samples_through_cnn(right_eyes, targets)
+
+
 
         concatenation = torch.cat((left_eye_features, right_eye_features), 2)
-        return concatenation, targets
+        return concatenation, targets_left
 
         
 
