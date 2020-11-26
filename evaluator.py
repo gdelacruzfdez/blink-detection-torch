@@ -60,19 +60,7 @@ class BlinkEvaluator(EvaluatorInterface):
         return left_eyes, right_eyes
 
     def extract_blinks_per_video(self, dataframe):
-        num_videos = dataframe['video'].max()
-        
-        all_gt_blinks = []
-        all_pred_blinks = []
-
-        for i in range(1, num_videos + 1):
-            video_dataframe = dataframe[dataframe['video'] == i].reset_index()
-            gt_blinks, pred_blinks = self.calculate_blinks_for_video(video_dataframe)
-
-            all_gt_blinks.append(gt_blinks)
-            all_pred_blinks.append(pred_blinks)
-        
-        return all_gt_blinks, all_pred_blinks
+        pass
 
 
     def calculate_global_confussion_matrix(self, gt_blinks_per_video, pred_blinks_per_video):
@@ -167,16 +155,7 @@ class BlinkEvaluator(EvaluatorInterface):
 
 
     def calculate_blinks_for_video(self, video_dataframe):
-
-        gt_blinks = self.convert_annotation_to_blinks(video_dataframe)
-        gt_blinks = self.delete_non_visible_blinks(gt_blinks)
-        gt_blinks = self.merge_double_blinks(gt_blinks)
-
-        pred_blinks = self.convert_predictions_to_blinks(video_dataframe)
-        pred_blinks = self.delete_non_visible_blinks(pred_blinks)
-        pred_blinks = self.merge_double_blinks(pred_blinks)
-        
-        return gt_blinks, pred_blinks
+        pass
         
 
 
@@ -364,14 +343,6 @@ class BlinkCompletenessDetectionEvaluator(BlinkEvaluator):
         
         return partial_gt_blinks, complete_gt_blinks, partial_pred_blinks, complete_pred_blinks
 
-    def divide_partial_and_full_blinks_per_video(self, list_of_blinks_per_video):
-        list_of_partial_blinks_per_video = []
-        list_of_complete_blinks_per_video = []
-        for video_blinks in list_of_blinks_per_video:
-            partial_blinks, complete_blinks = self.divide_partial_and_full_blinks(video_blinks)
-            list_of_partial_blinks_per_video.append(partial_blinks)
-            list_of_complete_blinks_per_video.append(complete_blinks)
-        return list_of_partial_blinks_per_video, list_of_complete_blinks_per_video
 
     def divide_partial_and_full_blinks(self, blinks):
         partial = []
