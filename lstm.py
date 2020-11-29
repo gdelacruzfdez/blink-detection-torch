@@ -321,13 +321,13 @@ class BlinkDetectionLSTMModel(LSTMModel):
     
     def initialize_train_loader(self):
         self.train_set = dataloader.BlinkDetectionLSTMDataset(
-                self.train_dataset_dirs, self.TRAIN_TRANSFORM)
+                self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
         self.train_loader = DataLoader(
             self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
     def initialize_evaluation_loader(self):
         self.test_set = dataloader.BlinkDetectionLSTMDataset(
-                self.test_dataset_dirs, self.TEST_TRANSFORM)
+                self.test_dataset_dirs, self.TEST_TRANSFORM, videos = self.test_videos)
         self.test_loader = DataLoader(
             self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
@@ -340,13 +340,13 @@ class EyeStateDetectionLSTMModel(LSTMModel):
 
     def initialize_train_loader(self):
         self.train_set = dataloader.EyeStateDetectionLSTMDataset(
-            self.train_dataset_dirs, self.TRAIN_TRANSFORM)
+            self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
         self.train_loader = DataLoader(
             self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
     def initialize_evaluation_loader(self):
         self.test_set = dataloader.EyeStateDetectionLSTMDataset(
-            self.test_dataset_dirs, self.TEST_TRANSFORM)
+            self.test_dataset_dirs, self.TEST_TRANSFORM, videos = self.test_videos)
         self.test_loader = DataLoader(
             self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
     
@@ -389,13 +389,13 @@ class BlinkCompletenessDetectionLSTMModel(LSTMModel):
     
     def initialize_train_loader(self):
         self.train_set = dataloader.BlinkCompletenessDetectionLSTMDataset(
-                self.train_dataset_dirs, self.TRAIN_TRANSFORM)
+                self.train_dataset_dirs, self.TRAIN_TRANSFORM, videos = self.train_videos)
         self.train_loader = DataLoader(
             self.train_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
     def initialize_evaluation_loader(self):
         self.test_set = dataloader.BlinkCompletenessDetectionLSTMDataset(
-                self.test_dataset_dirs, self.TEST_TRANSFORM)
+                self.test_dataset_dirs, self.TEST_TRANSFORM, videos = self.test_videos)
         self.test_loader = DataLoader(
             self.test_set, batch_size=self.batch_size, shuffle=False, num_workers=8)
 
